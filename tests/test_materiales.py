@@ -144,3 +144,58 @@ def test_dibujar_sin_gpu_no_hace_nada():
 
    
     materiales.dibujar(campos, CtxVacio())
+
+def test_casa_junto_al_agua_se_moja():
+    campos = crear_campos_prueba()
+    materiales = Materiales()
+
+    materiales.iniciar(campos, None)
+
+    # Una casa ocupa 2x2 celdas y el agua toca solo una celda vecina, por fuera.
+    campos.obstaculo[20:22, 20:22] = True
+    campos.W[20, 19] = cfg.UMBRAL_MOJADO_M + 1.0
+
+    materiales.actualizar(campos, 1.0)
+
+    assert materiales.humedad[20, 20] > 0.0     # celda de la casa pegada al agua
+    assert materiales.humedad[21, 21] == 0.0    # celda de la casa sin agua cerca
+
+
+def test_fijar_origen_sin_gpu_no_hace_nada():
+    campos = crear_campos_prueba()
+    materiales = Materiales()
+
+    materiales.iniciar(campos, None)
+
+    materiales.fijar_origen(1.0, 2.0, 3.0)
+
+def test_textura_detalle_tiene_formato_gpu_y_es_determinista():
+    from modulos.materiales import generar_textura_detalle
+
+    a = generar_textura_detalle()
+    b = generar_textura_detalle()
+
+    assert a.dtype == np.uint8
+    assert a.shape == (128, 128, 1)
+    assert np.array_equal(a, b)
+
+
+def test_textura_detalle_tiene_variacion():
+    from modulos.materiales import generar_textura_detalle
+
+    datos = generar_textura_detalle()
+
+    assert datos.std() > 10.0       # no es una textura plana
+    assert datos.min() < 60 and datos.max() > 195
+
+
+def test_shader_terreno_usa_la_textura_de_detalle():
+    from modulos.materiales import FRAG_TERRENO
+
+    assert "texture(uDetalle" in FRAG_TERRENO
+
+def test_shader_agua_tiene_espuma_en_el_borde():
+    from modulos.materiales import FRAG_AGUA
+
+    assert "uAnchoEspuma" in FRAG_AGUA
+    assert "texture(uDetalle" in FRAG_AGUA

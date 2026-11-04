@@ -114,12 +114,13 @@ class Terreno(Modulo):
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glEnable(gl.GL_CULL_FACE)
 
-        # Terreno: si Rol 4 publicó su material (con humedad) se usa ese shader;
+        # Si Rol 4 publicó su material (con humedad), terreno y casas se dibujan con ese shader;
         # si no, se usa el shader propio de siempre.
         materiales = getattr(ctx, "materiales", None)
         cam_pos = getattr(ctx, "cam_pos", None)
-        if not (materiales is not None and cam_pos is not None
-                and materiales.preparar_terreno(campos, ctx, vp, cam_pos)):
+        con_humedad = (materiales is not None and cam_pos is not None
+                       and materiales.preparar_terreno(campos, ctx, vp, cam_pos))
+        if not con_humedad:
             gl.glUseProgram(self._gl["prog"])
             gl.glUniformMatrix4fv(self._gl["u_vp"], 1, gl.GL_TRUE, np.ascontiguousarray(vp, np.float32))
             gl.glUniform3f(self._gl["u_sol"], -0.4, 0.8, -0.3)
@@ -127,20 +128,20 @@ class Terreno(Modulo):
         gl.glBindVertexArray(self._gl["vao_terreno"])
         gl.glDrawElements(gl.GL_TRIANGLES, self._gl["n_idx"], gl.GL_UNSIGNED_INT, None)
 
-        # Casas: siempre con el shader de Rol 2.
-        gl.glUseProgram(self._gl["prog"])
-        gl.glUniformMatrix4fv(self._gl["u_vp"], 1, gl.GL_TRUE, np.ascontiguousarray(vp, np.float32))
-        gl.glUniform3f(self._gl["u_sol"], -0.4, 0.8, -0.3)
         gl.glBindVertexArray(self._gl["vao_casas"])
         rangos = self._gl["rangos"]
         for i in range(min(len(self.origenes), len(campos.dano))):
             first, count = rangos[(self.escenario.tipos[i], int(campos.dano[i]))]
-            gl.glUniform3f(self._gl["u_origen"], *self.origenes[i])
+            if con_humedad:
+                materiales.fijar_origen(*self.origenes[i])
+            else:
+                gl.glUniform3f(self._gl["u_origen"], *self.origenes[i])
             gl.glDrawArrays(gl.GL_TRIANGLES, first, count)
         gl.glBindVertexArray(0)
         gl.glDisable(gl.GL_CULL_FACE)
         if not prueba_prof:
             gl.glDisable(gl.GL_DEPTH_TEST)
+
     def dibujar_fragmentos(self, ctx, indice=0, separacion=1.0):
         vp = getattr(ctx, "vp", None)
         if self._gl is None or vp is None:

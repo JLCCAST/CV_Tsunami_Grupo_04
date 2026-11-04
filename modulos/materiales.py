@@ -1,4 +1,7 @@
-"""Materiales, humedad del terreno, agua transparente y efectos visuales (Rol 4)."""
+"""Materiales, humedad del terreno, textura de detalle, agua transparente y efectos visuales (Rol 4)."""
+
+import ctypes
+import os
 
 import numpy as np
 
@@ -10,11 +13,20 @@ from modulos.base import Modulo
 ACUMULACION = 0.8
 SECADO = 0.12
 
+# Textura de detalle del terreno (ruido procedural, se repite en mosaico).
+DETALLE_TAM = 128          # píxeles por lado de la textura
+DETALLE_SEMILLA = 4        # semilla fija: el resultado es siempre el mismo
+DETALLE_ESCALA = 0.25      # repeticiones por metro (0.25 = un mosaico cada 4 m)
+DETALLE_INTENSIDAD = 0.35
+
 # Agua transparente.
 PROF_MAX_AGUA = 8.0      # metros de profundidad que llegan al color "profundo"
 ALFA_MIN = 0.35          # opacidad del agua somera
 ALFA_MAX = 0.85          # opacidad del agua profunda
 ELEVACION_AGUA = 0.03    # el agua flota un poco sobre H+W para evitar parpadeos
+
+# Espuma en el borde de la ola.
+ESPUMA_ANCHO_M = 0.7
 
 # Respaldo si Iluminacion (Rol 5) todavía no publicó el sol en el contexto.
 SOL_DIR_DEFECTO = (0.26, 0.93, 0.34)
@@ -23,11 +35,13 @@ SOL_COLOR_DEFECTO = (1.0, 0.96, 0.88)
 NOMBRES_UNIFORMS = (
     "uVP", "uOrigen", "uCelda", "uTamMundo",
     "uSolDir", "uSolColor", "uCamPos", "uAlarma", "uMapaHumedad",
+    "uDetalle", "uEscalaDetalle", "uIntDetalle",
 )
 
 NOMBRES_UNIFORMS_AGUA = (
     "uVP", "uSolDir", "uSolColor", "uCamPos", "uAlarma",
     "uUmbral", "uDMax", "uAlfaMin", "uAlfaMax",
+    "uTiempo", "uDetalle", "uAnchoEspuma",
 )
 
 VERT_TERRENO = """#version 330 core
@@ -55,6 +69,7 @@ void main() {
 
 # Cuerpo del fragment shader, SIN '#version' y SIN funciones de iluminación:
 # armar_fragment() (Rol 5) antepone ambas cosas.
+# Sirve para el terreno y para las casas: la humedad se lee por posición en el mundo.
 FRAG_TERRENO = """
 in vec3 vPos;
 in vec3 vNormal;
@@ -62,6 +77,9 @@ in vec3 vColor;
 in vec2 vUvHumedad;
 
 uniform sampler2D uMapaHumedad;
+uniform sampler2D uDetalle;
+uniform float uEscalaDetalle;
+uniform float uIntDetalle;
 uniform vec3 uSolDir;
 uniform vec3 uSolColor;
 uniform vec3 uCamPos;
@@ -76,9 +94,17 @@ void main() {
 
     float humedad = texture(uMapaHumedad, vUvHumedad).r;
 
-    // Material del terreno: ka, kd, ks, brillo (seco). Con humedad, phong_mojado
+    // Textura de detalle: se proyecta desde arriba (x, z del mundo), así que
+    // solo se aplica a superficies casi horizontales (suelo y techos), no a paredes.
+    // Mojado, el suelo pierde contraste.
+    float detalle = texture(uDetalle, vPos.xz * uEscalaDetalle).r;
+    float arriba = smoothstep(0.55, 0.85, N.y);
+    float factor = 1.0 + (detalle - 0.5) * 2.0 * uIntDetalle * arriba * (1.0 - 0.5 * humedad);
+    vec3 base = vColor * factor;
+
+    // Material: ka, kd, ks, brillo (seco). Con humedad, phong_mojado
     // oscurece el color y sube el brillo especular.
-    vec3 col = phong_mojado(N, V, L, vColor, uSolColor,
+    vec3 col = phong_mojado(N, V, L, base, uSolColor,
                             0.35, 0.65, 0.10, 16.0,
                             humedad, 1.0);
 
@@ -116,6 +142,9 @@ uniform float uUmbral;
 uniform float uDMax;
 uniform float uAlfaMin;
 uniform float uAlfaMax;
+uniform float uTiempo;
+uniform sampler2D uDetalle;
+uniform float uAnchoEspuma;
 
 out vec4 fragColor;
 
@@ -139,9 +168,53 @@ void main() {
     float alfa = mix(uAlfaMin, uAlfaMax, t);
     alfa *= smoothstep(uUmbral, uUmbral + 0.3, vProf);
 
+    // Espuma: franja blanca en el borde del agua (poca profundidad). Se rompe con
+    // la textura de ruido, que se desplaza despacio para que la espuma "viva".
+    float borde = 1.0 - smoothstep(uUmbral, uUmbral + uAnchoEspuma, vProf);
+    vec2 uvEspuma = vPos.xz * 0.35 + vec2(uTiempo * 0.04, uTiempo * 0.025);
+    float ruido = texture(uDetalle, uvEspuma).r;
+    float espuma = clamp(borde * (0.3 + 1.4 * ruido), 0.0, 1.0);
+    col = mix(col, vec3(0.95, 0.97, 1.0), espuma * 0.8);
+    alfa = max(alfa, espuma * 0.7);
     fragColor = vec4(col, alfa);
 }
 """
+
+
+def generar_textura_detalle(tam=DETALLE_TAM, semilla=DETALLE_SEMILLA):
+    """Textura de detalle procedural: ruido suave que se repite sin costuras.
+
+    Se parte de ruido blanco y se filtra en el dominio de la frecuencia dejando
+    pasar más las frecuencias bajas (ruido "1/f"). Como la transformada de Fourier
+    es periódica, el resultado encaja consigo mismo en los bordes.
+    Devuelve uint8 con forma (tam, tam, 1): un solo canal, valores 0..255.
+    """
+    rng = np.random.default_rng(semilla)
+    ruido = rng.standard_normal((tam, tam))
+
+    fx = np.fft.fftfreq(tam)
+    f = np.sqrt(fx[np.newaxis, :] ** 2 + fx[:, np.newaxis] ** 2)
+    f[0, 0] = 1.0                       # evita dividir entre cero
+    filtro = 1.0 / f ** 1.2
+    filtro[0, 0] = 0.0                  # sin componente constante
+
+    campo = np.fft.ifft2(np.fft.fft2(ruido) * filtro).real
+
+    # Estirar el contraste usando percentiles para ignorar valores extremos.
+    lo, hi = np.percentile(campo, (2, 98))
+    campo = np.clip((campo - lo) / (hi - lo), 0.0, 1.0)
+    return (campo * 255.0).astype(np.uint8)[..., np.newaxis]
+
+
+def _alarma(campos):
+    """Valor de alarma para el tinte rojo.
+
+    Solo para probar: con la variable de entorno ROL4_SIN_ALARMA=1 se apaga el tinte
+    y se ven la humedad y el agua sin el rojo de Rol 5.
+    """
+    if os.environ.get("ROL4_SIN_ALARMA"):
+        return 0.0
+    return float(campos.alarma)
 
 
 class Materiales(Modulo):
@@ -150,6 +223,7 @@ class Materiales(Modulo):
     def __init__(self):
         self.humedad = None
         self.textura_humedad = None
+        self.textura_detalle = None
         self.programa = None
         self._gl = None
         self._u = {}
@@ -182,6 +256,8 @@ class Materiales(Modulo):
         self.textura_humedad = Textura(ancho, alto, canales=1, suave=True)
         self.textura_humedad.subir(self.datos_textura_humedad())
 
+        self._iniciar_detalle(gl, Textura)
+
         fuente_fs = armar_fragment(FRAG_TERRENO)
         self.programa = compilar_programa(VERT_TERRENO, fuente_fs)
         self._u = {
@@ -190,6 +266,25 @@ class Materiales(Modulo):
         }
 
         self._iniciar_agua(gl, alto, ancho)
+
+    def _iniciar_detalle(self, gl, Textura):
+        """Sube la textura de detalle a la GPU con repetición y mipmaps."""
+        datos = generar_textura_detalle()
+        tam = datos.shape[0]
+        self.textura_detalle = Textura(tam, tam, canales=1, suave=True)
+        self.textura_detalle.subir(datos)
+
+        # Repetir en mosaico (la humedad usa el borde, el detalle no) y suavizar con
+        # mipmaps: de lejos el detalle se promedia a gris medio y no parpadea.
+        gl.glActiveTexture(gl.GL_TEXTURE2)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.textura_detalle.id)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_REPEAT)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_REPEAT)
+        gl.glGenerateMipmap(gl.GL_TEXTURE_2D)
+        gl.glTexParameteri(
+            gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR_MIPMAP_LINEAR
+        )
+        gl.glActiveTexture(gl.GL_TEXTURE0)
 
     def _iniciar_agua(self, gl, alto, ancho):
         """Malla del agua: una cuadrícula con un vértice por celda (x, y, z, profundidad)."""
@@ -223,9 +318,9 @@ class Materiales(Modulo):
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._vbo_agua)
         gl.glBufferData(gl.GL_ARRAY_BUFFER, self._buf_agua.nbytes, None, gl.GL_DYNAMIC_DRAW)
         gl.glEnableVertexAttribArray(0)
-        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 16, gl.ctypes.c_void_p(0))
+        gl.glVertexAttribPointer(0, 3, gl.GL_FLOAT, gl.GL_FALSE, 16, ctypes.c_void_p(0))
         gl.glEnableVertexAttribArray(1)
-        gl.glVertexAttribPointer(1, 1, gl.GL_FLOAT, gl.GL_FALSE, 16, gl.ctypes.c_void_p(12))
+        gl.glVertexAttribPointer(1, 1, gl.GL_FLOAT, gl.GL_FALSE, 16, ctypes.c_void_p(12))
         self._ebo_agua = gl.glGenBuffers(1)
         gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self._ebo_agua)
         gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, tri.nbytes, tri, gl.GL_STATIC_DRAW)
@@ -244,6 +339,16 @@ class Materiales(Modulo):
         # Detectar las celdas de tierra alcanzadas por el agua.
         tierra = campos.H > cfg.NIVEL_MAR_M
         agua = campos.W > cfg.UMBRAL_MOJADO_M
+
+        # El agua rodea las casas, no entra en sus celdas: una celda ocupada por una casa
+        # se considera mojada si alguna celda vecina (arriba, abajo, izquierda, derecha) tiene agua.
+        vecina = np.zeros_like(agua)
+        vecina[1:, :] |= agua[:-1, :]
+        vecina[:-1, :] |= agua[1:, :]
+        vecina[:, 1:] |= agua[:, :-1]
+        vecina[:, :-1] |= agua[:, 1:]
+        agua = agua | (campos.obstaculo & vecina)
+
         mojado = tierra & agua
 
         # Acumulación gradual: se aproxima progresivamente a 1.
@@ -269,9 +374,10 @@ class Materiales(Modulo):
         return datos[..., np.newaxis]
 
     def preparar_terreno(self, campos, ctx, vp, cam_pos):
-        """Activa el shader de terreno con humedad y deja listos sus uniforms.
+        """Activa el shader de materiales con humedad y deja listos sus uniforms.
 
         No dibuja: quien llama hace después el glDrawElements de la malla.
+        Sirve también para las casas: tras esta llamada, fijar_origen() mueve cada una.
         Devuelve False si todavía no hay recursos de GPU.
         """
         if self.programa is None:
@@ -293,14 +399,28 @@ class Materiales(Modulo):
         gl.glUniform3f(u["uSolDir"], *[float(v) for v in sol_dir])
         gl.glUniform3f(u["uSolColor"], *[float(v) for v in sol_color])
         gl.glUniform3f(u["uCamPos"], *[float(v) for v in cam_pos])
-        gl.glUniform1f(u["uAlarma"], float(campos.alarma))
+        gl.glUniform1f(u["uAlarma"], _alarma(campos))
 
         # La humedad va en la unidad de textura 1 (la 0 la usa el HUD).
         gl.glActiveTexture(gl.GL_TEXTURE1)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.textura_humedad.id)
         gl.glUniform1i(u["uMapaHumedad"], 1)
+
+        # El detalle va en la unidad 2.
+        gl.glActiveTexture(gl.GL_TEXTURE2)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.textura_detalle.id)
+        gl.glUniform1i(u["uDetalle"], 2)
+        gl.glUniform1f(u["uEscalaDetalle"], float(DETALLE_ESCALA))
+        gl.glUniform1f(u["uIntDetalle"], float(DETALLE_INTENSIDAD))
+
         gl.glActiveTexture(gl.GL_TEXTURE0)
         return True
+
+    def fijar_origen(self, x, y, z):
+        """Mueve el modelo a (x, y, z): así cada casa se dibuja con el shader de materiales."""
+        if self.programa is None:
+            return
+        self._gl.glUniform3f(self._u["uOrigen"], float(x), float(y), float(z))
 
     def dibujar(self, campos, ctx):
         """Dibuja el agua transparente. Va después del terreno y las casas (lo opaco)."""
@@ -334,11 +454,19 @@ class Materiales(Modulo):
         gl.glUniform3f(u["uSolDir"], *[float(v) for v in sol_dir])
         gl.glUniform3f(u["uSolColor"], *[float(v) for v in sol_color])
         gl.glUniform3f(u["uCamPos"], *[float(v) for v in cam_pos])
-        gl.glUniform1f(u["uAlarma"], float(campos.alarma))
+        gl.glUniform1f(u["uAlarma"], _alarma(campos))
         gl.glUniform1f(u["uUmbral"], float(cfg.UMBRAL_MOJADO_M))
         gl.glUniform1f(u["uDMax"], PROF_MAX_AGUA)
         gl.glUniform1f(u["uAlfaMin"], ALFA_MIN)
         gl.glUniform1f(u["uAlfaMax"], ALFA_MAX)
+        gl.glUniform1f(u["uTiempo"], float(campos.t))
+        gl.glUniform1f(u["uAnchoEspuma"], float(ESPUMA_ANCHO_M))
+
+        # El ruido de la espuma es la misma textura de detalle (unidad 2).
+        gl.glActiveTexture(gl.GL_TEXTURE2)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.textura_detalle.id)
+        gl.glUniform1i(u["uDetalle"], 2)
+        gl.glActiveTexture(gl.GL_TEXTURE0)
 
         gl.glBindVertexArray(self._vao_agua)
         gl.glDrawElements(gl.GL_TRIANGLES, self._n_idx_agua, gl.GL_UNSIGNED_INT, None)
@@ -361,6 +489,9 @@ class Materiales(Modulo):
         if self.textura_humedad is not None:
             self.textura_humedad.borrar()
             self.textura_humedad = None
+        if self.textura_detalle is not None:
+            self.textura_detalle.borrar()
+            self.textura_detalle = None
         if self._gl is not None and self.programa is not None:
             self._gl.glDeleteProgram(self.programa)
             self.programa = None
