@@ -23,3 +23,6 @@ FPS_OBJETIVO = 20         # referencia para el control de la semana
 DANO_INTACTA = 0
 DANO_DANADA = 1
 DANO_DESTRUIDA = 2
+
+HORA_INICIAL = 11.0
+CICLO_DIA_S = 0.0
