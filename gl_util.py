@@ -47,28 +47,56 @@ def compilar_programa(fuente_vertice: str, fuente_fragmento: str) -> int:
 
 
 class Textura:
-    """Textura 2D que se actualiza desde un arreglo NumPy uint8 [alto, ancho, canales]."""
+    """Textura 2D que se actualiza desde un arreglo NumPy uint8 [alto, ancho, canales].
+
+    Admite 1 canal (GL_RED), 3 canales (GL_RGB) o 4 canales (GL_RGBA).
+    """
 
     def __init__(self, ancho: int, alto: int, canales: int = 4, suave: bool = False):
         self.ancho, self.alto, self.canales = ancho, alto, canales
-        self.formato = {3: gl.GL_RGB, 4: gl.GL_RGBA}[canales]
+
+        formatos = {
+            1: gl.GL_RED,
+            3: gl.GL_RGB,
+            4: gl.GL_RGBA,
+        }
+
+        if canales not in formatos:
+            raise ValueError("La textura debe tener 1, 3 o 4 canales.")
+
+        self.formato = formatos[canales]
+
         self.id = gl.glGenTextures(1)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.id)
+
         filtro = gl.GL_LINEAR if suave else gl.GL_NEAREST
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, filtro)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, filtro)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
         gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+
         gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-        gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, self.formato, ancho, alto, 0, self.formato,
-                        gl.GL_UNSIGNED_BYTE, None)
+
+        gl.glTexImage2D(
+            gl.GL_TEXTURE_2D, 0, self.formato,
+            ancho, alto, 0,
+            self.formato, gl.GL_UNSIGNED_BYTE, None
+        )
 
     def subir(self, arreglo: np.ndarray):
-        assert arreglo.shape == (self.alto, self.ancho, self.canales) and arreglo.dtype == np.uint8
+        assert arreglo.shape == (
+            self.alto, self.ancho, self.canales
+        ) and arreglo.dtype == np.uint8
+
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.id)
         gl.glPixelStorei(gl.GL_UNPACK_ALIGNMENT, 1)
-        gl.glTexSubImage2D(gl.GL_TEXTURE_2D, 0, 0, 0, self.ancho, self.alto, self.formato,
-                           gl.GL_UNSIGNED_BYTE, np.ascontiguousarray(arreglo))
+
+        gl.glTexSubImage2D(
+            gl.GL_TEXTURE_2D, 0, 0, 0,
+            self.ancho, self.alto,
+            self.formato, gl.GL_UNSIGNED_BYTE,
+            np.ascontiguousarray(arreglo)
+        )
 
     def borrar(self):
         gl.glDeleteTextures([self.id])

@@ -1,10 +1,11 @@
 """Punto de entrada: ventana GLFW + OpenGL 3.3 core, bucle principal y módulos.
 
     python main.py                  abre la ventana (ESC sale, ESPACIO pausa, R reinicia)
+    python main.py --3d             vista 3D del terreno, agua y casas (flechas mueven la cámara)
     python main.py --frames 200 --captura salida.png    corre 200 cuadros, guarda una captura y sale
 
-Se ve la vista de depuración de los campos (terreno, agua y casas) y el HUD a la derecha, 
-todo con datos falsos.
+Por defecto se ve la vista de depuración de los campos (terreno, agua y casas) y el HUD
+a la derecha, todo con datos falsos.
 """
 import argparse
 import sys
@@ -75,16 +76,19 @@ class Contexto:
     quad = None
 
 
-def crear_modulos():
+def crear_modulos(vista3d=False):
     # Cada rol agrega su módulo aquí. El orden de la lista es el orden de actualización y dibujo.
-    return [
-        VistaMapa(),        # rol 1 (temporal)
+    # En la vista 3D se quita el mapa plano: el terreno y el agua se dibujan en 3D.
+    modulos = [
         Terreno(),          # rol 2
         Arrastre(),         # rol 3
         Materiales(),       # rol 4
         Iluminacion(),      # rol 5
         ModuloHUD(),        # rol 1 (siempre al final: se dibuja encima)
     ]
+    if not vista3d:
+        modulos.insert(0, VistaMapa())      # rol 1 (temporal)
+    return modulos
 
 
 def main():
@@ -92,6 +96,8 @@ def main():
     ap.add_argument("--frames", type=int, default=0, help="salir después de N cuadros (0 = sin límite)")
     ap.add_argument("--captura", default="", help="guardar una captura PNG antes de salir")
     ap.add_argument("--t-inicio", type=float, default=0.0, help="segundo de la simulación con el que empieza")
+    ap.add_argument("--3d", dest="vista3d", action="store_true",
+                    help="vista 3D con cámara orbital (flechas) en lugar del mapa plano")
     args = ap.parse_args()
 
     import glfw
@@ -117,9 +123,14 @@ def main():
     ctx.ancho_fb, ctx.alto_fb = glfw.get_framebuffer_size(ventana)
     ctx.quad = QuadTextura()
 
+    camara = None
+    if args.vista3d:
+        from camara3d import CamaraOrbital
+        camara = CamaraOrbital()
+
     campos = Campos.vacios()
     falsos = DatosFalsos(campos)
-    modulos = crear_modulos()
+    modulos = crear_modulos(args.vista3d)
     for m in modulos:
         m.iniciar(campos, ctx)
 
@@ -151,8 +162,16 @@ def main():
         for m in modulos:
             m.actualizar(campos, dt)
 
-        gl.glViewport(0, 0, ctx.ancho_fb, ctx.alto_fb)
-        gl.glClearColor(0.08, 0.09, 0.12, 1.0)
+        if camara is not None:
+            # La vista 3D ocupa la zona izquierda; el HUD queda a la derecha.
+            zona = ctx.ancho_fb - ctx.ancho_fb * cfg.HUD_ANCHO // cfg.VENTANA_ANCHO
+            camara.actualizar(glfw, ventana, dt)
+            ctx.vp, ctx.cam_pos = camara.matrices(zona / ctx.alto_fb)
+            gl.glViewport(0, 0, zona, ctx.alto_fb)
+            gl.glClearColor(0.55, 0.72, 0.90, 1.0)
+        else:
+            gl.glViewport(0, 0, ctx.ancho_fb, ctx.alto_fb)
+            gl.glClearColor(0.08, 0.09, 0.12, 1.0)
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
         for m in modulos:
             m.dibujar(campos, ctx)
