@@ -10,7 +10,6 @@ a la derecha, todo con datos falsos.
 import argparse
 import sys
 import time
-
 import numpy as np
 
 import config as cfg
@@ -26,7 +25,7 @@ from vista_mapa import imagen_mapa
 
 
 class ModuloHUD(Modulo):
-    """Panel lateral. Se redibuja como máximo a HUD_HZ y solo si cambian los valores."""
+    """Panel lateral HUD."""
     nombre = "hud"
 
     def __init__(self):
@@ -53,7 +52,7 @@ class ModuloHUD(Modulo):
 
 
 class VistaMapa(Modulo):
-    """Vista de depuración: terreno, agua y casas desde arriba. La ven todos los roles en la semana 1."""
+    """Vista de depuración 2D."""
     nombre = "vista de mapa"
 
     def iniciar(self, campos, ctx):
@@ -70,24 +69,24 @@ class VistaMapa(Modulo):
 
 
 class Contexto:
-    """Lo que los módulos necesitan para dibujar."""
+    """Lo que los módulos necesitan para dibujar en pantalla."""
     ancho_fb = cfg.VENTANA_ANCHO
     alto_fb = cfg.VENTANA_ALTO
     quad = None
+    vp = None
+    cam_pos = None
 
 
 def crear_modulos(vista3d=False):
-    # Cada rol agrega su módulo aquí. El orden de la lista es el orden de actualización y dibujo.
-    # En la vista 3D se quita el mapa plano: el terreno y el agua se dibujan en 3D.
     modulos = [
         Terreno(),          # rol 2
         Arrastre(),         # rol 3
         Materiales(),       # rol 4
         Iluminacion(),      # rol 5
-        ModuloHUD(),        # rol 1 (siempre al final: se dibuja encima)
+        ModuloHUD(),        # rol 1
     ]
     if not vista3d:
-        modulos.insert(0, VistaMapa())      # rol 1 (temporal)
+        modulos.insert(0, VistaMapa())
     return modulos
 
 
@@ -95,9 +94,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frames", type=int, default=0, help="salir después de N cuadros (0 = sin límite)")
     ap.add_argument("--captura", default="", help="guardar una captura PNG antes de salir")
-    ap.add_argument("--t-inicio", type=float, default=0.0, help="segundo de la simulación con el que empieza")
-    ap.add_argument("--3d", dest="vista3d", action="store_true",
-                    help="vista 3D con cámara orbital (flechas) en lugar del mapa plano")
+    ap.add_argument("--t-inicio", type=float, default=0.0, help="segundo de inicio de simulación")
+    ap.add_argument("--3d", dest="vista3d", action="store_true", help="activar vista 3D")
     args = ap.parse_args()
 
     import glfw
@@ -108,29 +106,34 @@ def main():
     glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-    glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, glfw.TRUE)     # necesario en macOS
+    glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, glfw.TRUE)
     glfw.window_hint(glfw.RESIZABLE, glfw.FALSE)
     ventana = glfw.create_window(cfg.VENTANA_ANCHO, cfg.VENTANA_ALTO, "Simulación de tsunami", None, None)
     if not ventana:
         glfw.terminate()
-        sys.exit("No se pudo crear la ventana OpenGL 3.3 (revisa los drivers de video)")
+        sys.exit("No se pudo crear la ventana OpenGL")
     glfw.make_context_current(ventana)
-    glfw.swap_interval(0)       # sin vsync para medir fps reales; ponlo en 1 para la demo
-    print("OpenGL:", gl.glGetString(gl.GL_VERSION).decode(), "|", gl.glGetString(gl.GL_RENDERER).decode())
+    glfw.swap_interval(0)
 
     from gl_util import QuadTextura
     ctx = Contexto()
     ctx.ancho_fb, ctx.alto_fb = glfw.get_framebuffer_size(ventana)
     ctx.quad = QuadTextura()
 
-    camara = None
-    if args.vista3d:
-        from camara3d import CamaraOrbital
-        camara = CamaraOrbital()
-
     campos = Campos.vacios()
     falsos = DatosFalsos(campos)
     modulos = crear_modulos(args.vista3d)
+
+    # Identificar el módulo del Rol 3 para el control de la cámara
+    modulo_arrastre = next((m for m in modulos if isinstance(m, Arrastre)), None)
+
+    # Callback para scroll del ratón gestionado por el Rol 3
+    def al_hacer_scroll(win, xoffset, yoffset):
+        if modulo_arrastre and args.vista3d:
+            modulo_arrastre.camara.scroll_callback(xoffset, yoffset)
+
+    glfw.set_scroll_callback(ventana, al_hacer_scroll)
+
     for m in modulos:
         m.iniciar(campos, ctx)
 
@@ -151,6 +154,9 @@ def main():
     t_sim = args.t_inicio
     inicio_total = anterior = glfw.get_time()
     t_fps, cuadros_fps, cuadros = anterior, 0, 0
+
+    gl.glEnable(gl.GL_DEPTH_TEST)
+
     while not glfw.window_should_close(ventana):
         ahora = glfw.get_time()
         dt, anterior = ahora - anterior, ahora
@@ -158,21 +164,27 @@ def main():
             t_sim, estado["reiniciar"] = args.t_inicio, False
         if not estado["pausa"]:
             t_sim += dt
-            falsos.actualizar(t_sim)          # aquí entra la simulación real
+            falsos.actualizar(t_sim)
+
+        # Entrada y cálculo de cámara desde el Rol 3
+        if args.vista3d and modulo_arrastre:
+            modulo_arrastre.camara.procesar_entrada(glfw, ventana, dt)
+            zona = ctx.ancho_fb - ctx.ancho_fb * cfg.HUD_ANCHO // cfg.VENTANA_ANCHO
+            ctx.vp, ctx.cam_pos = modulo_arrastre.camara.matrices(zona / ctx.alto_fb)
+
         for m in modulos:
             m.actualizar(campos, dt)
 
-        if camara is not None:
-            # La vista 3D ocupa la zona izquierda; el HUD queda a la derecha.
+        if args.vista3d:
             zona = ctx.ancho_fb - ctx.ancho_fb * cfg.HUD_ANCHO // cfg.VENTANA_ANCHO
-            camara.actualizar(glfw, ventana, dt)
-            ctx.vp, ctx.cam_pos = camara.matrices(zona / ctx.alto_fb)
             gl.glViewport(0, 0, zona, ctx.alto_fb)
             gl.glClearColor(0.55, 0.72, 0.90, 1.0)
         else:
             gl.glViewport(0, 0, ctx.ancho_fb, ctx.alto_fb)
             gl.glClearColor(0.08, 0.09, 0.12, 1.0)
+
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+
         for m in modulos:
             m.dibujar(campos, ctx)
 
@@ -180,25 +192,12 @@ def main():
         cuadros_fps += 1
         if ahora - t_fps >= 0.5:
             fps = cuadros_fps / (ahora - t_fps)
-            glfw.set_window_title(ventana, f"Simulación de tsunami | {fps:5.1f} fps | t = {t_sim:5.1f} s"
-                                  + (" | PAUSA" if estado["pausa"] else ""))
+            glfw.set_window_title(ventana, f"Simulación de tsunami | {fps:5.1f} fps | t = {t_sim:5.1f} s")
             t_fps, cuadros_fps = ahora, 0
 
-        if args.frames and cuadros >= args.frames:
-            if args.captura:
-                gl.glReadBuffer(gl.GL_BACK)
-                datos = gl.glReadPixels(0, 0, ctx.ancho_fb, ctx.alto_fb, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
-                img = np.frombuffer(datos, np.uint8).reshape(ctx.alto_fb, ctx.ancho_fb, 3)[::-1]
-                from PIL import Image
-                Image.fromarray(np.ascontiguousarray(img)).save(args.captura)
-                print("captura guardada en", args.captura)
-            break
         glfw.swap_buffers(ventana)
         glfw.poll_events()
 
-    total = glfw.get_time() - inicio_total
-    print(f"{cuadros} cuadros en {total:.1f} s = {cuadros / max(total, 1e-9):.0f} fps promedio "
-          f"(ojo: en la nube el render es por software; mide en tu computadora)")
     for m in modulos:
         m.cerrar()
     glfw.terminate()
