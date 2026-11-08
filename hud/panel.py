@@ -48,6 +48,7 @@ class PanelHUD:
         self._t_muestra = -1e9
         self._firma = None
         self.ultimo_ms = 0.0          # milisegundos que tardó el último dibujo
+        self.ms_agua = None           # ms por paso de la simulación del agua (lo pone main.py)
 
     # --- cuándo hace falta redibujar ----------------------------------------
     def _valores(self, campos):
@@ -78,6 +79,8 @@ class PanelHUD:
         lz.texto(16, 684, f"t = {campos.t:6.1f} s", TEXTO, 13)
         if self.datos_falsos:
             lz.texto(304, 684, "DATOS DE PRUEBA", AVISO, 12, negrita=True, ancla="der")
+        elif self.ms_agua is not None:
+            lz.texto(304, 685, f"agua: {self.ms_agua:.2f} ms/paso", TEXTO_SUAVE, 12, ancla="der")
         self.ultimo_ms = (time.perf_counter() - inicio) * 1000.0
         return lz.px
 

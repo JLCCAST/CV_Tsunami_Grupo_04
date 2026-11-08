@@ -35,6 +35,7 @@ class ModuloHUD(Modulo):
         self.tex = None
         self._ultimo = -1e9
         self.redibujos = 0
+        self.cronometro_agua = None     # main.py lo conecta al cronómetro de la simulación
 
     def iniciar(self, campos, ctx):
         from gl_util import Textura
@@ -42,6 +43,8 @@ class ModuloHUD(Modulo):
         self.tex.subir(self.panel.dibujar(campos))
 
     def actualizar(self, campos, dt):
+        if self.cronometro_agua is not None and self.cronometro_agua.pasos:
+            self.panel.ms_agua = self.cronometro_agua.ema_ms
         ahora = time.perf_counter()
         if ahora - self._ultimo >= 1.0 / cfg.HUD_HZ and self.panel.necesita_redibujo(campos):
             self.tex.subir(self.panel.dibujar(campos))
@@ -148,6 +151,10 @@ def main():
     else:
         from agua.frente_ola import FrenteOla
         agua = FrenteOla(campos)
+    cronometro_agua = getattr(agua, "cronometro", None)     # la ola falsa no se mide
+    for m in modulos:
+        if isinstance(m, ModuloHUD):
+            m.cronometro_agua = cronometro_agua
 
     estado ={"pausa": False, "reiniciar": False}
 
@@ -223,6 +230,8 @@ def main():
     total = glfw.get_time() - inicio_total
     print(f"{cuadros} cuadros en {total:.1f} s = {cuadros / max(total, 1e-9):.0f} fps promedio "
           f"(ojo: en la nube el render es por software; mide en tu computadora)")
+    if cronometro_agua is not None:
+        print("agua (frente de ola):", cronometro_agua.resumen())
     for m in modulos:
         m.cerrar()
     glfw.terminate()

@@ -14,11 +14,13 @@ Modelo cinemático por filas (una fila = un valor de iz):
 Publica en `campos` (ver CONTRATO.md): W, U, V, t y alarma. Solo LEE H.
 Se usa igual que DatosFalsos: `ola = FrenteOla(campos)` y en cada cuadro `ola.actualizar(t)`.
 Si el tiempo retrocede (tecla R) la simulación se reinicia sola.
+Cada llamada a actualizar() es un "paso"; su duración queda en `self.cronometro`.
 """
 import numpy as np
 
 import config as cfg
 from agua.alarma import calcular_alarma
+from agua.medicion import Cronometro
 
 # --- Parámetros de la ola ----------------------------------------------------
 T_LLEGADA_S = 3.0           # segundo en que el frente entra por el borde del mar
@@ -54,6 +56,7 @@ class FrenteOla:
         centro = (g - 1) / 2.0
         self.xf0 = (-CURVATURA_M * ((z - centro) / centro) ** 2).astype(np.float32)   # [G] frente inicial
         self.filas = np.arange(g)
+        self.cronometro = Cronometro()                  # no se borra al reiniciar con R
         self.reiniciar()
 
     # --- estado -----------------------------------------------------------------
@@ -95,7 +98,10 @@ class FrenteOla:
 
     # --- campos ---------------------------------------------------------------------
     def actualizar(self, t: float):
-        t = float(t)
+        with self.cronometro:
+            self._paso(float(t))
+
+    def _paso(self, t: float):
         if t < self.t_sim - 1e-9:
             self.reiniciar()
         self._avanzar_frente(self.t_sim, t)

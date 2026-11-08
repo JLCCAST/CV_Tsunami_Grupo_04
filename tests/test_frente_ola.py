@@ -133,6 +133,29 @@ def test_reiniciar_al_retroceder_el_tiempo(terreno_real):
     assert np.allclose(W_reinicio, b.W)
 
 
+def test_cada_paso_queda_medido(terreno_real):
+    c = _campos(terreno_real)
+    ola = _correr(c, 10.0, paso=0.5)                  # 21 pasos: t = 0, 0.5, ..., 10
+    crono = ola.cronometro
+    assert crono.pasos == 21 and len(crono.muestras) == 21
+    assert 0.0 < crono.media_ms <= crono.maximo_ms
+    assert crono.ema_ms > 0.0
+    ola.actualizar(2.0)                               # reiniciar con R no borra la medición
+    assert crono.pasos == 22
+
+
+def test_cronometro_estadisticas():
+    from agua.medicion import Cronometro
+    c = Cronometro()
+    for ms in (1.0, 2.0, 3.0, 10.0):
+        c.registrar(ms)
+    assert c.media_ms == pytest.approx(4.0)
+    assert c.maximo_ms == 10.0 and c.ultimo_ms == 10.0
+    assert c.percentil_ms(50) == pytest.approx(2.5)
+    assert 1.0 < c.ema_ms < 10.0
+    assert "4 pasos" in c.resumen()
+
+
 def test_no_depende_del_tamano_del_paso(terreno_real):
     a, b = _campos(terreno_real), _campos(terreno_real)
     ola_a = _correr(a, 32.0, paso=1.0 / 60)        # 60 fps
