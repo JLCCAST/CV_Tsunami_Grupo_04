@@ -4,6 +4,7 @@ Sirve para ver el HUD en cualquier computadora y para medir cuánto tarda el dib
 Uso (desde la carpeta del proyecto):
     python tools/captura_hud.py                 # guarda capturas/ventana_t*.png
     python tools/captura_hud.py --tiempos 5 20  # solo esos instantes (segundos)
+    python tools/captura_hud.py --ola frente --tiempos 0 20 30 45 60   # frente de ola sobre el terreno real
 """
 import argparse
 import os
@@ -25,18 +26,29 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tiempos", type=float, nargs="*", default=[0.0, 8.0, 14.0, 22.0])
     ap.add_argument("--salida", default="capturas")
+    ap.add_argument("--ola", choices=("falsa", "frente"), default="falsa",
+                    help="falsa: datos de prueba; frente: FrenteOla sobre el terreno real del rol 2")
     args = ap.parse_args()
     os.makedirs(args.salida, exist_ok=True)
 
     campos = Campos.vacios()
     falsos = DatosFalsos(campos)
-    panel = PanelHUD()
+    terreno = None
+    if args.ola == "frente":
+        from agua.frente_ola import FrenteOla
+        from modulos.terreno import Terreno
+        terreno = Terreno()
+        terreno.iniciar(campos, None)          # terreno y casas reales, sin OpenGL
+        falsos = FrenteOla(campos)             # misma interfaz: actualizar(t)
+    panel = PanelHUD(datos_falsos=args.ola == "falsa")
     dt = 0.1
     t = 0.0
     pendientes = sorted(args.tiempos)
     tiempos_dibujo = []
     while pendientes:
         falsos.actualizar(t)
+        if terreno is not None:
+            terreno.actualizar(campos, dt)     # daño de las casas según W, U, V (rol 2)
         campos.validar()
         if panel.necesita_redibujo(campos):
             panel.dibujar(campos)
@@ -47,7 +59,8 @@ def main():
             ventana = Image.new("RGB", (cfg.VENTANA_ANCHO, cfg.VENTANA_ALTO), (20, 24, 32))
             ventana.paste(mapa, ((cfg.VENTANA_ANCHO - cfg.HUD_ANCHO - 720) // 2, 0))
             ventana.paste(Image.fromarray(panel.lienzo.px[:, :, :3]), (cfg.VENTANA_ANCHO - cfg.HUD_ANCHO, 0))
-            ruta = os.path.join(args.salida, f"ventana_t{int(pendientes[0]):02d}.png")
+            prefijo = "ventana" if args.ola == "falsa" else "frente"
+            ruta = os.path.join(args.salida, f"{prefijo}_t{int(pendientes[0]):02d}.png")
             ventana.save(ruta)
             print("guardado", ruta, f"alarma={campos.alarma:.2f}")
             pendientes.pop(0)
