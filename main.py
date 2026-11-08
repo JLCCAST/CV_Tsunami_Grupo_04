@@ -83,7 +83,7 @@ def crear_modulos(vista3d=False):
         Arrastre(),         # rol 3
         Materiales(),       # rol 4
         Iluminacion(),      # rol 5
-        ModuloHUD(),        # rol 1
+        ModuloHUD(),        # rol 1 (siempre al final: se dibuja encima)
     ]
     if not vista3d:
         modulos.insert(0, VistaMapa())
@@ -113,7 +113,8 @@ def main():
         glfw.terminate()
         sys.exit("No se pudo crear la ventana OpenGL")
     glfw.make_context_current(ventana)
-    glfw.swap_interval(0)
+    glfw.swap_interval(0)       # sin vsync para medir fps reales; ponlo en 1 para la demo
+    print("OpenGL:", gl.glGetString(gl.GL_VERSION).decode(), "|", gl.glGetString(gl.GL_RENDERER).decode())
 
     from gl_util import QuadTextura
     ctx = Contexto()
@@ -192,12 +193,25 @@ def main():
         cuadros_fps += 1
         if ahora - t_fps >= 0.5:
             fps = cuadros_fps / (ahora - t_fps)
-            glfw.set_window_title(ventana, f"Simulación de tsunami | {fps:5.1f} fps | t = {t_sim:5.1f} s")
+            glfw.set_window_title(ventana, f"Simulación de tsunami | {fps:5.1f} fps | t = {t_sim:5.1f} s"
+                                  + (" | PAUSA" if estado["pausa"] else ""))
             t_fps, cuadros_fps = ahora, 0
 
+        if args.frames and cuadros >= args.frames:
+            if args.captura:
+                gl.glReadBuffer(gl.GL_BACK)
+                datos = gl.glReadPixels(0, 0, ctx.ancho_fb, ctx.alto_fb, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
+                img = np.frombuffer(datos, np.uint8).reshape(ctx.alto_fb, ctx.ancho_fb, 3)[::-1]
+                from PIL import Image
+                Image.fromarray(np.ascontiguousarray(img)).save(args.captura)
+                print("captura guardada en", args.captura)
+            break
         glfw.swap_buffers(ventana)
         glfw.poll_events()
 
+    total = glfw.get_time() - inicio_total
+    print(f"{cuadros} cuadros en {total:.1f} s = {cuadros / max(total, 1e-9):.0f} fps promedio "
+          f"(ojo: en la nube el render es por software; mide en tu computadora)")
     for m in modulos:
         m.cerrar()
     glfw.terminate()
