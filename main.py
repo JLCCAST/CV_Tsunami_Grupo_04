@@ -3,9 +3,11 @@
     python main.py                  abre la ventana (ESC sale, ESPACIO pausa, R reinicia)
     python main.py --3d             vista 3D del terreno, agua y casas (flechas mueven la cámara)
     python main.py --frames 200 --captura salida.png    corre 200 cuadros, guarda una captura y sale
+    python main.py --ola-falsa      usa la ola de prueba de la semana 1 en lugar del frente de ola
 
 Por defecto se ve la vista de depuración de los campos (terreno, agua y casas) y el HUD
-a la derecha, todo con datos falsos.
+a la derecha. El agua la simula el frente de ola del rol 1 (agua/frente_ola.py) sobre el
+terreno real del rol 2.
 """
 import argparse
 import sys
@@ -28,8 +30,8 @@ class ModuloHUD(Modulo):
     """Panel lateral HUD."""
     nombre = "hud"
 
-    def __init__(self):
-        self.panel = PanelHUD(cfg.HUD_ANCHO, cfg.VENTANA_ALTO)
+    def __init__(self, datos_falsos=False):
+        self.panel = PanelHUD(cfg.HUD_ANCHO, cfg.VENTANA_ALTO, datos_falsos=datos_falsos)
         self.tex = None
         self._ultimo = -1e9
         self.redibujos = 0
@@ -77,13 +79,13 @@ class Contexto:
     cam_pos = None
 
 
-def crear_modulos(vista3d=False):
+def crear_modulos(vista3d=False, ola_falsa=False):
     modulos = [
         Terreno(),          # rol 2
         Arrastre(),         # rol 3
         Materiales(),       # rol 4
         Iluminacion(),      # rol 5
-        ModuloHUD(),        # rol 1 (siempre al final: se dibuja encima)
+        ModuloHUD(ola_falsa),   # rol 1 (siempre al final: se dibuja encima)
     ]
     if not vista3d:
         modulos.insert(0, VistaMapa())
@@ -96,6 +98,8 @@ def main():
     ap.add_argument("--captura", default="", help="guardar una captura PNG antes de salir")
     ap.add_argument("--t-inicio", type=float, default=0.0, help="segundo de inicio de simulación")
     ap.add_argument("--3d", dest="vista3d", action="store_true", help="activar vista 3D")
+    ap.add_argument("--ola-falsa", action="store_true",
+                    help="usar la ola de prueba de la semana 1 en lugar del frente de ola")
     args = ap.parse_args()
 
     import glfw
@@ -122,8 +126,8 @@ def main():
     ctx.quad = QuadTextura()
 
     campos = Campos.vacios()
-    falsos = DatosFalsos(campos)
-    modulos = crear_modulos(args.vista3d)
+    falsos = DatosFalsos(campos)        # rellena todo el contrato; el rol 2 reemplaza H y casas en iniciar()
+    modulos = crear_modulos(args.vista3d, args.ola_falsa)
 
     # Identificar el módulo del Rol 3 para el control de la cámara
     modulo_arrastre = next((m for m in modulos if isinstance(m, Arrastre)), None)
@@ -138,7 +142,14 @@ def main():
     for m in modulos:
         m.iniciar(campos, ctx)
 
-    estado = {"pausa": False, "reiniciar": False}
+    # Simulación del agua (rol 1). Se crea después de iniciar() porque necesita el H real del rol 2.
+    if args.ola_falsa:
+        agua = falsos
+    else:
+        from agua.frente_ola import FrenteOla
+        agua = FrenteOla(campos)
+
+    estado ={"pausa": False, "reiniciar": False}
 
     def al_teclear(win, tecla, _scan, accion, _mods):
         if accion != glfw.PRESS:
@@ -165,7 +176,7 @@ def main():
             t_sim, estado["reiniciar"] = args.t_inicio, False
         if not estado["pausa"]:
             t_sim += dt
-            falsos.actualizar(t_sim)
+            agua.actualizar(t_sim)          # publica W, U, V, t y alarma
 
         # Entrada y cálculo de cámara desde el Rol 3
         if args.vista3d and modulo_arrastre:

@@ -2,9 +2,9 @@
 
 Sirve para ver el HUD en cualquier computadora y para medir cuánto tarda el dibujo.
 Uso (desde la carpeta del proyecto):
-    python tools/captura_hud.py                 # guarda capturas/ventana_t*.png
-    python tools/captura_hud.py --tiempos 5 20  # solo esos instantes (segundos)
-    python tools/captura_hud.py --ola frente --tiempos 0 20 30 45 60   # frente de ola sobre el terreno real
+    python tools/captura_hud.py                 # frente de ola sobre el terreno real: capturas/frente_t*.png
+    python tools/captura_hud.py --tiempos 0 20 30 45 60   # solo esos instantes (segundos)
+    python tools/captura_hud.py --ola falsa     # ola de prueba de la semana 1: capturas/ventana_t*.png
 """
 import argparse
 import os
@@ -26,7 +26,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tiempos", type=float, nargs="*", default=[0.0, 8.0, 14.0, 22.0])
     ap.add_argument("--salida", default="capturas")
-    ap.add_argument("--ola", choices=("falsa", "frente"), default="falsa",
+    ap.add_argument("--ola", choices=("falsa", "frente"), default="frente",
                     help="falsa: datos de prueba; frente: FrenteOla sobre el terreno real del rol 2")
     args = ap.parse_args()
     os.makedirs(args.salida, exist_ok=True)
