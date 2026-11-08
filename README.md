@@ -1,19 +1,63 @@
 # Simulación de un tsunami sobre un terreno costero (Computación Visual, Grupo 4)
 
-Python + OpenGL 3.3 (PyOpenGL + GLFW). Entrega de la **semana 1, rol 1 (integra)**: esqueleto del
-proyecto, configuración, contrato de datos, HUD base y datos falsos para que todos trabajen desde ya.
+Python + OpenGL 3.3 (PyOpenGL + GLFW). Cada rol trabaja en su módulo y todos comparten un solo
+objeto `Campos` (ver `CONTRATO.md`).
+
+Estado del Rol 1 en la semana 2: el agua ya no es de prueba. El frente de ola (`agua/frente_ola.py`)
+corre sobre el terreno real del rol 2 y publica W, U, V y la alarma de 0 a 1. El HUD muestra la
+alarma, los medidores circulares (punto medio), la gráfica (Bresenham) y los milisegundos por paso.
 
 ## Cómo correrlo
 
 ```bash
 python -m pip install -r requirements.txt
-python main.py                       # ESC sale, ESPACIO pausa, R reinicia la ola
-python -m pytest                     # 31 pruebas, no necesitan ventana
-python tools/captura_hud.py          # genera capturas PNG del HUD sin abrir ventana
+python -m pytest                     # 254 pruebas, no necesitan ventana
+python main.py                       # vista de mapa 2D + HUD. ESC sale, ESPACIO pausa, R reinicia la ola
+python main.py --3d                  # vista 3D (flechas y ratón mueven la cámara, la rueda hace zoom)
 ```
 
-Si `python main.py` dice "No se pudo crear la ventana OpenGL 3.3", actualiza los drivers de video.
+Opciones de `main.py`:
+
+| Opción | Qué hace |
+|---|---|
+| `--3d` | vista 3D del terreno, el agua y las casas en lugar del mapa plano |
+| `--t-inicio 30` | empieza la simulación en ese segundo (la ola llega a la costa hacia t = 17 s) |
+| `--frames 200 --captura salida.png` | corre 200 cuadros, guarda una captura y sale |
+| `--ola-falsa` | usa la ola de prueba de la semana 1 (`agua/datos_falsos.py`) en vez del frente de ola |
+
+Herramientas sin ventana:
+
+```bash
+python tools/captura_hud.py --tiempos 0 22 30 45 60   # capturas/frente_t*.png (mapa + HUD)
+python tools/medir_agua.py --grid 64 128 256          # ms por paso del agua por resolución
+python tools/medir_agua.py --csv metricas_agua.csv --nota "semana 2"
+```
+
+Si `python main.py` dice "No se pudo crear la ventana OpenGL", actualiza los drivers de video.
 En macOS puede hacer falta `pip install glfw` desde el Python oficial (no el del sistema).
+
+## La ola (Rol 1, semana 2)
+
+| Segundo | Qué pasa |
+|---|---|
+| 0 a 3 | mar en calma |
+| 3 | el frente entra por el borde del mar (ix = 0), curvado, a 10 m/s |
+| ~17 | llega a la costa; la alarma sube a 1 cuando el agua en tierra pasa los 3 m |
+| 17 a 40 | inunda la playa; cada fila se detiene donde el terreno supera el muro de agua (3 m) |
+| 40 a 60 | la ola baja y el agua vuelve al mar (U negativa) |
+| 60 en adelante | calma otra vez; R reinicia todo (agua y daño de las casas) |
+
+Rapidez del flujo: `sqrt(g * W)` con tope de 12 m/s, en dirección normal al frente.
+Los parámetros están al inicio de `agua/frente_ola.py`. En la semana 3 el frente se frena según la
+pendiente y respeta la máscara de obstáculos del rol 2.
+
+Milisegundos por paso (laptop con Ryzen y Radeon 780M, 60 pasos por segundo, evento completo):
+
+| GRID | m/celda | media | p95 | % de un cuadro a 20 fps |
+|---|---|---|---|---|
+| 64 | 10.0 | 0.10 ms | 0.12 ms | 0.2 % |
+| 128 | 5.0 | 0.18 ms | 0.22 ms | 0.4 % |
+| 256 | 2.5 | 0.50 ms | 0.69 ms | 1.0 % |
 
 ## Estructura
 
@@ -22,17 +66,20 @@ En macOS puede hacer falta `pip install glfw` desde el Python oficial (no el del
 | `config.py` | constantes compartidas (GRID, metros por celda, umbrales) | Rol 1 |
 | `campos.py` | objeto `Campos` con H, W, U, V, alarma, casas, daño, máscara + `validar()` | Rol 1 (el contrato lo acordamos todos) |
 | `CONTRATO.md` | forma, unidad y dueño de cada campo; ejes; cómo engancharse | todos |
-| `agua/datos_falsos.py` | terreno, casas y ola falsos (se reemplazan por los módulos reales) | Rol 1 |
+| `agua/frente_ola.py` | simulación del agua: frente de ola que publica W, U, V, t y alarma | Rol 1 |
 | `agua/alarma.py` | alarma de 0 a 1 | Rol 1 |
+| `agua/medicion.py` | cronómetro de ms por paso | Rol 1 |
+| `agua/datos_falsos.py` | ola de prueba de la semana 1 (solo con `--ola-falsa`) | Rol 1 |
 | `hud/lienzo.py` | lienzo NumPy con Bresenham y punto medio propios | Rol 1 |
-| `hud/panel.py` | panel: alarma, medidores, gráfica, mini-mapa | Rol 1 |
+| `hud/panel.py` | panel: alarma, medidores, gráfica, mini-mapa, ms por paso | Rol 1 |
 | `vista_mapa.py` | imagen 2D de terreno, agua y casas | Rol 1 |
-| `modulos/terreno.py` | módulo vacío del terreno | Rol 2 |
-| `modulos/arrastre.py` | módulo vacío de cámara y arrastre | Rol 3 |
-| `modulos/materiales.py` | módulo vacío de texturas y mojado | Rol 4 |
-| `modulos/iluminacion.py` | módulo vacío de luz y color | Rol 5 |
-| `shaders/` | aquí van los GLSL (Rol 4 el de materiales, Rol 5 `iluminacion.glsl`) | Roles 4 y 5 |
-| `main.py` | ventana, bucle y lista `MODULOS` | integra el rol de la semana |
+| `modulos/terreno.py`, `terreno_gen.py`, `casas.py`, `csg.py`, `dano.py` | terreno diamond-square, costa en Bézier, casas CSG y estados de daño | Rol 2 |
+| `modulos/arrastre.py`, `camara3d.py` | cámara orbital, pila de matrices y arrastre | Rol 3 |
+| `modulos/materiales.py`, `demo_materiales.py` | texturas, humedad, agua transparente y espuma | Rol 4 |
+| `modulos/iluminacion.py`, `shaders/iluminacion.glsl` | sol, Phong, mojado, tinte de alarma y rampas de color | Rol 5 |
+| `main.py` | ventana, bucle y `crear_modulos()` | integra el rol de la semana |
+| `tools/` | `captura_hud.py`, `medir_agua.py` (Rol 1), `visor_terreno.py` (Rol 2), `medir_fps.py` (Rol 5) | cada rol |
+| `tests/` | pruebas sin ventana de cada rol | cada rol |
 
 ## Qué hace cada rol esta semana
 

@@ -35,26 +35,49 @@ Los valores de `config.py` son la única fuente de constantes compartidas.
 Superficie del agua = `H + W`. Una celda está mojada si `W > UMBRAL_MOJADO_M` (0.05 m).
 La alarma es la profundidad máxima en tierra firme (`H >= 0`) dividida entre `NIVEL_CRITICO_M` (3 m).
 
-## Datos falsos desde el día 1
+## Simulación del agua (desde la semana 2)
 
-`agua/datos_falsos.py` rellena todos los campos (terreno en pendiente, 6 casas y una ola que
-avanza y se repite cada 45 s). Úsalo hasta que llegue el módulo real:
+`agua/frente_ola.py` es la simulación real del rol 1. Lee `H` y escribe `W`, `U`, `V`, `t` y
+`alarma`. Necesita el terreno del rol 2, así que se crea **después** de `Terreno.iniciar()`:
 
 ```python
 from campos import Campos
-from agua.datos_falsos import DatosFalsos
+from agua.frente_ola import FrenteOla
+from modulos.terreno import Terreno
 
 campos = Campos.vacios()
-falsos = DatosFalsos(campos)
-falsos.actualizar(t)      # t en segundos; modifica campos in situ
+Terreno().iniciar(campos, None)   # sin OpenGL: genera H, casas, dano y obstaculo
+ola = FrenteOla(campos)
+ola.actualizar(t)         # t en segundos; modifica campos in situ. Si t retrocede, se reinicia
 campos.validar()          # lanza AssertionError si algo rompe el contrato
+```
+
+Lo que conviene saber al leer el agua:
+
+- El mar en calma tiene `W = -H` donde `H < 0` y velocidad cero. Solo el agua de la ola se mueve.
+- `U > 0` mientras la ola entra (hacia la tierra) y `U < 0` cuando se retira (desde t = 40 s).
+- `|U, V| <= 12 m/s`. Delante del frente, `W = 0` en tierra y `U = V = 0`.
+- En `main.py` el agua se actualiza **antes** que los módulos en cada cuadro, así que en
+  `actualizar()` cada módulo ya ve el agua del cuadro actual.
+
+## Datos falsos (semana 1)
+
+`agua/datos_falsos.py` rellena todos los campos (terreno en pendiente, 6 casas y una ola que
+avanza y se repite cada 45 s). Sirve para pruebas que no quieren depender de nadie, y la app
+lo usa con `python main.py --ola-falsa`:
+
+```python
+from agua.datos_falsos import DatosFalsos
+
+falsos = DatosFalsos(campos)   # OJO: también reemplaza H y casas por las de prueba
+falsos.actualizar(t)
 ```
 
 ## Cómo se engancha un módulo
 
 1. Crea tu clase en `modulos/<tu_archivo>.py` heredando de `modulos.base.Modulo`
    (`iniciar`, `actualizar`, `dibujar`, `cerrar`; todos opcionales).
-2. Agrégala a la lista `MODULOS` de `main.py`.
+2. Agrégala a `crear_modulos()` en `main.py`.
 3. Tus shaders GLSL van en `shaders/`. Dueños: Rol 4 el shader de materiales,
    Rol 5 `iluminacion.glsl`.
 
