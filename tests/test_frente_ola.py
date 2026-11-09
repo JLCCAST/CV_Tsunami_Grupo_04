@@ -73,6 +73,30 @@ def test_el_frente_se_detiene_donde_el_terreno_supera_el_muro(terreno_real):
     assert (delante[detenidas] >= cfg.NIVEL_MAR_M + fo.ALTURA_FRENTE_M - 1e-3).all()
 
 
+def test_frente_x_vacio_antes_de_la_llegada_y_en_el_retiro(terreno_real):
+    c = _campos(terreno_real)
+    ola = FrenteOla(c)
+    ola.actualizar(fo.T_LLEGADA_S - 0.5)
+    assert (c.frente_x == cfg.SIN_FRENTE).all()
+    ola.actualizar(fo.T_RETIRO_S + 1.0)
+    assert (c.frente_x == cfg.SIN_FRENTE).all()
+
+
+def test_frente_x_sigue_al_frente_mientras_entra(terreno_real):
+    c = _campos(terreno_real)
+    ola = FrenteOla(c)
+    previo = c.frente_x.copy()
+    for t in np.arange(fo.T_LLEGADA_S, fo.T_RETIRO_S, 0.5):
+        ola.actualizar(float(t))
+        dentro = ola.xf >= 0.0
+        assert np.array_equal(c.frente_x[dentro], ola.xf[dentro])
+        assert (c.frente_x[~dentro] == cfg.SIN_FRENTE).all()
+        publicado = previo != cfg.SIN_FRENTE
+        assert (c.frente_x[publicado] >= previo[publicado] - 1e-6).all()     # nunca retrocede
+        previo = c.frente_x.copy()
+    assert (c.frente_x != cfg.SIN_FRENTE).all()       # antes del retiro el frente ya entró en todas las filas
+
+
 def test_tierra_seca_delante_del_frente(terreno_real):
     c = _campos(terreno_real)
     ola = _correr(c, 28.0)

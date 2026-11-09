@@ -4,14 +4,15 @@ Python + OpenGL 3.3 (PyOpenGL + GLFW). Cada rol trabaja en su módulo y todos co
 objeto `Campos` (ver `CONTRATO.md`).
 
 Estado del Rol 1 en la semana 2: el agua ya no es de prueba. El frente de ola (`agua/frente_ola.py`)
-corre sobre el terreno real del rol 2 y publica W, U, V y la alarma de 0 a 1. El HUD muestra la
+corre sobre el terreno real del rol 2 y publica W, U, V, la alarma de 0 a 1 y la posición del frente
+en cada fila (`frente_x`, que el rol 2 usa para la cresta de la ola). El HUD muestra la
 alarma, los medidores circulares (punto medio), la gráfica (Bresenham) y los milisegundos por paso.
 
 ## Cómo correrlo
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pytest                     # 254 pruebas, no necesitan ventana
+python -m pytest                     # 289 pruebas, no necesitan ventana
 python main.py                       # vista de mapa 2D + HUD. ESC sale, ESPACIO pausa, R reinicia la ola
 python main.py --3d                  # vista 3D (flechas y ratón mueven la cámara, la rueda hace zoom)
 ```
@@ -66,7 +67,7 @@ Milisegundos por paso (laptop con Ryzen y Radeon 780M, 60 pasos por segundo, eve
 | `config.py` | constantes compartidas (GRID, metros por celda, umbrales) | Rol 1 |
 | `campos.py` | objeto `Campos` con H, W, U, V, alarma, casas, daño, máscara + `validar()` | Rol 1 (el contrato lo acordamos todos) |
 | `CONTRATO.md` | forma, unidad y dueño de cada campo; ejes; cómo engancharse | todos |
-| `agua/frente_ola.py` | simulación del agua: frente de ola que publica W, U, V, t y alarma | Rol 1 |
+| `agua/frente_ola.py` | simulación del agua: frente de ola que publica W, U, V, frente_x, t y alarma | Rol 1 |
 | `agua/alarma.py` | alarma de 0 a 1 | Rol 1 |
 | `agua/medicion.py` | cronómetro de ms por paso | Rol 1 |
 | `agua/datos_falsos.py` | ola de prueba de la semana 1 (solo con `--ola-falsa`) | Rol 1 |

@@ -11,7 +11,8 @@ Modelo cinemático por filas (una fila = un valor de iz):
   * Después de T_RETIRO_S la altura de la ola baja hasta cero en DURACION_RETIRO_S y el
     agua vuelve al mar (velocidad negativa).
 
-Publica en `campos` (ver CONTRATO.md): W, U, V, t y alarma. Solo LEE H.
+Publica en `campos` (ver CONTRATO.md): W, U, V, frente_x, t y alarma. Solo LEE H.
+`frente_x` es la x del frente en cada fila mientras la ola entra; el rol 2 la usa para la cresta.
 Se usa igual que DatosFalsos: `ola = FrenteOla(campos)` y en cada cuadro `ola.actualizar(t)`.
 Si el tiempo retrocede (tecla R) la simulación se reinicia sola.
 Cada llamada a actualizar() es un "paso"; su duración queda en `self.cronometro`.
@@ -127,6 +128,10 @@ class FrenteOla:
         norma = np.sqrt(1.0 + pendiente ** 2)
         c.U[:] = rapidez * (1.0 / norma)[:, None]
         c.V[:] = rapidez * (-pendiente / norma)[:, None]
+
+        # Frente publicado: solo mientras la ola entra y en las filas donde ya está dentro de la grilla.
+        entrando = T_LLEGADA_S <= t < T_RETIRO_S
+        c.frente_x[:] = np.where(entrando & (self.xf >= 0.0), self.xf, cfg.SIN_FRENTE)
 
         c.t = t
         c.alarma = calcular_alarma(c)

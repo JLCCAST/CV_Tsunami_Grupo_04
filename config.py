@@ -13,6 +13,7 @@ SEMILLA = 42
 
 NIVEL_CRITICO_M = 3.0     # profundidad en tierra firme que equivale a alarma = 1.0
 UMBRAL_MOJADO_M = 0.05    # por debajo de esta profundidad la celda se considera seca
+SIN_FRENTE = -1.0         # valor de frente_x en las filas donde no hay una ola entrando
 
 VENTANA_ANCHO = 1280
 VENTANA_ALTO = 720
