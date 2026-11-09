@@ -29,7 +29,7 @@ Los valores de `config.py` son la única fuente de constantes compartidas.
 | `W` | `float32 [G,G]` | m. Profundidad del agua sobre el terreno, `>= 0` | Rol 1 | Roles 3, 4 y HUD |
 | `U` | `float32 [G,G]` | m/s. Velocidad en x | Rol 1 | Roles 3 y 4 |
 | `V` | `float32 [G,G]` | m/s. Velocidad en z | Rol 1 | Roles 3 y 4 |
-| `alarma` | `float` | de 0.0 a 1.0 | Rol 1 | HUD, Rol 4 (tinte) |
+| `alarma` | `float` | de 0.0 a 1.0 | Rol 1 | HUD, Roles 4 y 5 (tinte) |
 | `t` | `float` | s. Reloj de la simulación | Rol 1 | todos |
 
 Superficie del agua = `H + W`. Una celda está mojada si `W > UMBRAL_MOJADO_M` (0.05 m).
@@ -80,6 +80,19 @@ falsos.actualizar(t)
 2. Agrégala a `crear_modulos()` en `main.py`.
 3. Tus shaders GLSL van en `shaders/`. Dueños: Rol 4 el shader de materiales,
    Rol 5 `iluminacion.glsl`.
+
+## Luz y sol (Rol 5)
+
+`Iluminacion` publica en `ctx` (no en `Campos`) en cada `actualizar()`:
+
+| Atributo | Tipo | Significado |
+|---|---|---|
+| `ctx.sol_dir` | float32 [3] | vector unitario HACIA el sol, en mundo (y arriba) |
+| `ctx.sol_color` | float32 [3] | color de la luz ya multiplicado por la intensidad (0 de noche) |
+| `ctx.hora` | float | hora del día, de 0 a 24 |
+| `ctx.glsl_iluminacion` | str | texto de `shaders/iluminacion.glsl` |
+
+Los shaders no definen su propio sol. La alarma se aplica al final del color con `tinte_alarma(color, alarma)`.
 
 ## Reglas de integración
 
