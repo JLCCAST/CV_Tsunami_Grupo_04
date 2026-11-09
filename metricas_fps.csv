@@ -1,0 +1,10 @@
+fecha,gpu,grid,ventana,msaa,vsync,frames,fps_prom,ms_prom,ms_p95,fps_1pct_low,nota
+2026-11-09 00:51,Intel(R) UHD Graphics,128,1280x720,0,False,10428,1042.7,0.96,1.45,559.4,semana1 base
+2026-11-09 00:51,Intel(R) UHD Graphics,128,1280x720,0,False,4889,488.9,2.05,2.92,314.3,semana1 base
+2026-11-09 00:51,Intel(R) UHD Graphics,128,1280x720,0,False,4575,457.4,2.19,4.52,135.0,semana1 base
+2026-11-09 00:59,Intel(R) UHD Graphics,128,1280x720,0,False,600,46.2,21.67,,,"semana2 todo junto, ola en tierra"
+2026-11-09 00:59,Intel(R) UHD Graphics,128,1280x720,0,False,600,130.4,7.67,,,"semana2 todo junto, ola en tierra"
+2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,130.4,7.67,,,"semana2 todo junto, ola en tierra"
+2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,125.0,8.0,,,"semana2 todo junto, mar en calma"
+2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,162.2,6.17,,,"semana2 todo junto, mar en calma"
+2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,157.9,6.33,,,"semana2 todo junto, mar en calma"
