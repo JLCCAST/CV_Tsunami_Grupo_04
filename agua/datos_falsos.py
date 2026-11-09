@@ -58,6 +58,8 @@ class DatosFalsos:
         mojado_en_tierra = (c.W > cfg.UMBRAL_MOJADO_M) & (self.x_m > PLAYA_X_M) & (self.x_m <= frente)
         c.U[:] = np.where(mojado_en_tierra, 8.0 * np.clip(c.W, 0.0, 1.0), 0.0).astype(np.float32)
         c.V[:] = (0.4 * np.sin(self.z_m * 0.05 + t) * c.U).astype(np.float32)
+        dentro = frente <= (cfg.GRID - 1) * cfg.CELL_M
+        c.frente_x[:] = frente if dentro else cfg.SIN_FRENTE      # frente recto: igual en todas las filas
 
         c.t = float(t)
         c.alarma = calcular_alarma(c)

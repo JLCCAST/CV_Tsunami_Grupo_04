@@ -28,6 +28,7 @@ class Campos:
     W: np.ndarray = field(default=None)          # float32 [G,G] profundidad del agua sobre el terreno, m (>= 0)
     U: np.ndarray = field(default=None)          # float32 [G,G] velocidad en x, m/s
     V: np.ndarray = field(default=None)          # float32 [G,G] velocidad en z, m/s
+    frente_x: np.ndarray = field(default=None)   # float32 [G]   x del frente (m) en cada fila iz mientras la ola entra; SIN_FRENTE si no hay
     alarma: float = 0.0                          # 0.0 (calma) a 1.0 (crítica)
 
     # --- Reloj de la simulación ---------------------------------------------
@@ -44,6 +45,7 @@ class Campos:
             W=np.zeros((g, g), np.float32),
             U=np.zeros((g, g), np.float32),
             V=np.zeros((g, g), np.float32),
+            frente_x=np.full(g, cfg.SIN_FRENTE, np.float32),
             alarma=0.0,
             t=0.0,
         )
@@ -63,6 +65,12 @@ class Campos:
         assert (self.W >= 0).all(), "W (profundidad) no puede ser negativa"
         assert np.isfinite(self.H).all() and np.isfinite(self.W).all(), "H y W deben ser finitos"
         assert np.isfinite(self.U).all() and np.isfinite(self.V).all(), "U y V deben ser finitos"
+        f = self.frente_x
+        assert isinstance(f, np.ndarray), "frente_x debe ser np.ndarray"
+        assert f.shape == (g,), f"frente_x debe ser ({g},), es {f.shape}"
+        assert f.dtype == np.float32, f"frente_x debe ser float32, es {f.dtype}"
+        assert ((f == cfg.SIN_FRENTE) | ((f >= 0.0) & (f <= cfg.WORLD_M))).all(), \
+            "frente_x solo admite SIN_FRENTE o una x entre 0 y WORLD_M"
         assert 0.0 <= self.alarma <= 1.0, "alarma debe estar entre 0 y 1"
         assert self.casas.ndim == 2 and self.casas.shape[1] == 4, "casas debe ser [N,4]"
         assert self.casas.dtype == np.int32, "casas debe ser int32"

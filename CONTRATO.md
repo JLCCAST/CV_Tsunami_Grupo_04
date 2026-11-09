@@ -29,6 +29,7 @@ Los valores de `config.py` son la única fuente de constantes compartidas.
 | `W` | `float32 [G,G]` | m. Profundidad del agua sobre el terreno, `>= 0` | Rol 1 | Roles 3, 4 y HUD |
 | `U` | `float32 [G,G]` | m/s. Velocidad en x | Rol 1 | Roles 3 y 4 |
 | `V` | `float32 [G,G]` | m/s. Velocidad en z | Rol 1 | Roles 3 y 4 |
+| `frente_x` | `float32 [G]` | m. x del frente de la ola en cada fila `iz` mientras entra; `SIN_FRENTE` (-1) si no hay | Rol 1 | Rol 2 (cresta) |
 | `alarma` | `float` | de 0.0 a 1.0 | Rol 1 | HUD, Roles 4 y 5 (tinte) |
 | `t` | `float` | s. Reloj de la simulación | Rol 1 | todos |
 
@@ -37,8 +38,8 @@ La alarma es la profundidad máxima en tierra firme (`H >= 0`) dividida entre `N
 
 ## Simulación del agua (desde la semana 2)
 
-`agua/frente_ola.py` es la simulación real del rol 1. Lee `H` y escribe `W`, `U`, `V`, `t` y
-`alarma`. Necesita el terreno del rol 2, así que se crea **después** de `Terreno.iniciar()`:
+`agua/frente_ola.py` es la simulación real del rol 1. Lee `H` y escribe `W`, `U`, `V`, `frente_x`,
+`t` y `alarma`. Necesita el terreno del rol 2, así que se crea **después** de `Terreno.iniciar()`:
 
 ```python
 from campos import Campos
@@ -57,13 +58,18 @@ Lo que conviene saber al leer el agua:
 - El mar en calma tiene `W = -H` donde `H < 0` y velocidad cero. Solo el agua de la ola se mueve.
 - `U > 0` mientras la ola entra (hacia la tierra) y `U < 0` cuando se retira (desde t = 40 s).
 - `|U, V| <= 12 m/s`. Delante del frente, `W = 0` en tierra y `U = V = 0`.
+- `frente_x[iz]` es la x en metros del frente en la fila `iz`, solo mientras la ola entra
+  (desde t = 3 s hasta t = 40 s). Vale `SIN_FRENTE` (-1, en `config.py`) antes de la llegada,
+  en las filas donde el frente curvo aún no cruza el borde del mar y desde que empieza el retiro.
+  Nunca retrocede. Para la cresta: se dibuja en `x = frente_x[iz]` y, cuando
+  `H` en esa posición ya es tierra (`H >= 0`), la ola llegó a la costa y la cresta debe romper.
 - En `main.py` el agua se actualiza **antes** que los módulos en cada cuadro, así que en
   `actualizar()` cada módulo ya ve el agua del cuadro actual.
 
 ## Datos falsos (semana 1)
 
-`agua/datos_falsos.py` rellena todos los campos (terreno en pendiente, 6 casas y una ola que
-avanza y se repite cada 45 s). Sirve para pruebas que no quieren depender de nadie, y la app
+`agua/datos_falsos.py` rellena todos los campos (terreno en pendiente, 6 casas y una ola de
+frente recto, con el mismo `frente_x` en todas las filas, que avanza y se repite cada 45 s). Sirve para pruebas que no quieren depender de nadie, y la app
 lo usa con `python main.py --ola-falsa`:
 
 ```python

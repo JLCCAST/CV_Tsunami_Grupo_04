@@ -29,6 +29,8 @@ def test_campos_vacios_cumplen_contrato():
     lambda c: setattr(c, "H", np.zeros((10, 10), np.float32)),               # forma equivocada
     lambda c: setattr(c, "alarma", 1.5),                                     # fuera de [0, 1]
     lambda c: c.V.__setitem__((0, 0), np.nan),                               # no finito
+    lambda c: c.frente_x.__setitem__(0, -5.0),                               # frente fuera de rango
+    lambda c: setattr(c, "frente_x", np.zeros(cfg.GRID, np.float64)),        # tipo equivocado
 ])
 def test_validar_detecta_campos_rotos(romper):
     c = Campos.vacios()
@@ -49,6 +51,13 @@ def test_datos_falsos_respetan_contrato(t):
     DatosFalsos(c).actualizar(t)
     c.validar()
     assert c.t == pytest.approx(t)
+
+
+def test_datos_falsos_publican_un_frente_recto():
+    from agua import datos_falsos as df
+    c = Campos.vacios()
+    DatosFalsos(c).actualizar(5.0)
+    assert np.allclose(c.frente_x, 20.0 + df.VEL_FRENTE_MS * 5.0)
 
 
 # ---------------------------------------------------------------------------
