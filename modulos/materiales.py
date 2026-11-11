@@ -56,9 +56,11 @@ out vec3 vPos;
 out vec3 vNormal;
 out vec3 vColor;
 out vec2 vUvHumedad;
+out vec3 vPosLocal;
 void main() {
     vec3 p = aPos + uOrigen;
     vPos = p;
+    vPosLocal = aPos;
     vNormal = aNormal;
     vColor = aColor;
     // Medio texel de desfase: cada vértice cae en el centro de su celda.
@@ -75,6 +77,7 @@ in vec3 vPos;
 in vec3 vNormal;
 in vec3 vColor;
 in vec2 vUvHumedad;
+in vec3 vPosLocal;
 
 uniform sampler2D uMapaHumedad;
 uniform sampler2D uDetalle;
@@ -86,6 +89,28 @@ uniform vec3 uCamPos;
 uniform float uAlarma;
 
 out vec4 fragColor;
+
+float patron_fachada(vec3 p, vec3 normal) {
+    // Coordenadas según la orientación de la pared.
+    vec2 uv;
+
+    if (abs(normal.z) > abs(normal.x)) {
+        uv = vec2(p.x, p.y);
+    } else {
+        uv = vec2(p.z, p.y);
+    }
+
+    // Distribución de ventanas por piso.
+    vec2 celda = vec2(3.6, 3.0);
+    vec2 local = fract(uv / celda);
+
+    // Ventana rectangular.
+    float ventanaX = step(0.18, local.x) * step(local.x, 0.82);
+    float ventanaY = step(0.30, local.y) * step(local.y, 0.78);
+    float ventana = ventanaX * ventanaY;
+
+    return ventana;
+}
 
 void main() {
     vec3 N = normalize(vNormal);
@@ -340,8 +365,7 @@ class Materiales(Modulo):
         tierra = campos.H > cfg.NIVEL_MAR_M
         agua = campos.W > cfg.UMBRAL_MOJADO_M
 
-        # El agua rodea las casas, no entra en sus celdas: una celda ocupada por una casa
-        # se considera mojada si alguna celda vecina (arriba, abajo, izquierda, derecha) tiene agua.
+        
         vecina = np.zeros_like(agua)
         vecina[1:, :] |= agua[:-1, :]
         vecina[:-1, :] |= agua[1:, :]
@@ -351,8 +375,24 @@ class Materiales(Modulo):
 
         mojado = tierra & agua
 
-        # Acumulación gradual: se aproxima progresivamente a 1.
-        factor_acumulacion = 1.0 - np.exp(-ACUMULACION * dt)
+        profundidad = campos.W[mojado].copy()
+
+        # Las casas también acumulan humedad por contacto con agua vecina.
+        profundidad = np.maximum(
+            profundidad,
+            cfg.UMBRAL_MOJADO_M + 0.1
+)
+
+        intensidad = np.clip(
+            profundidad / PROF_MAX_AGUA,
+            0.0,
+            1.0
+)
+
+        factor_acumulacion = 1.0 - np.exp(
+            -ACUMULACION * intensidad * dt
+        )
+
         self.humedad[mojado] += (
             1.0 - self.humedad[mojado]
         ) * factor_acumulacion
