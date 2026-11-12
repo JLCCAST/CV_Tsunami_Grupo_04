@@ -1,9 +1,9 @@
 """Cámara orbital, pila de matrices propia y arrastre de objetos/fragmentos (Rol 3)."""
 import numpy as np
-from OpenGL import GL as gl
 
 import config as cfg
 from camara3d import CamaraOrbital
+from campos import celda_de_metros
 from modulos.base import Modulo
 
 
@@ -47,23 +47,52 @@ class Arrastre(Modulo):
     """Módulo principal del Rol 3: maneja la cámara 3D, transformaciones y física de arrastre."""
     nombre = "camara y arrastre (rol 3)"
 
-    def __init__(self):
+    def __init__(self, num_piezas: int = cfg.CANTIDAD_PIEZAS_S2):
         super().__init__()
         self.camara = CamaraOrbital()
         self.stack = PilaMatrices()
+        self.num_piezas = num_piezas
 
-        # Objeto de prueba (Auto / Caja en coordenadas del mundo)
-        self.pos_auto = np.array([100.0, 2.0, 100.0], dtype=np.float32)
-        self.tamano_auto = np.array([6.0, 3.0, 10.0], dtype=np.float32)
+        # Auto principal en zona costera (x cercano a la playa donde entra la ola)
+        self.pos_auto = np.array([180.0, 0.0, 310.0], dtype=np.float32)
+        self.rot_auto = 0.0
+        self.tamano_auto = np.array([4.5, 2.0, 8.0], dtype=np.float32)
 
-        # Buffers de renderizado OpenGL para el objeto dummy
+        # Generación reproducible de piezas/escombros (20 a 50 según guía S2)
+        rng = np.random.default_rng(cfg.SEMILLA)
+        self.piezas_pos = np.zeros((num_piezas, 3), dtype=np.float32)
+        self.piezas_pos[:, 0] = rng.uniform(140.0, 320.0, size=num_piezas)  # x en zona de impacto
+        self.piezas_pos[:, 2] = rng.uniform(80.0, 560.0, size=num_piezas)   # z a lo largo de la costa
+        self.piezas_rot = rng.uniform(0.0, 2.0 * np.pi, size=num_piezas).astype(np.float32)
+        self.piezas_escala = rng.uniform(1.2, 3.2, size=(num_piezas, 3)).astype(np.float32)
+        self.piezas_escala[:, 1] *= 0.5  # piezas más planas tipo tablas/escombros
+
+        # Recursos OpenGL
         self.vao = None
         self.vbo = None
         self.shader_program = None
 
+    def _ubicar_en_terreno(self, campos):
+        """Ajusta la altura inicial Y de auto y piezas sobre el terreno H."""
+        ix, iz = celda_de_metros(float(self.pos_auto[0]), float(self.pos_auto[2]))
+        self.pos_auto[1] = campos.H[iz, ix] + self.tamano_auto[1] * 0.5
+
+        for i in range(self.num_piezas):
+            px, pz = float(self.piezas_pos[i, 0]), float(self.piezas_pos[i, 2])
+            pix, piz = celda_de_metros(px, pz)
+            self.piezas_pos[i, 1] = campos.H[piz, pix] + self.piezas_escala[i, 1] * 0.5
+
     def iniciar(self, campos, ctx):
-        """Inicializa los buffers OpenGL para dibujar el objeto de prueba en 3D."""
+        """Posiciona objetos sobre el terreno e inicializa OpenGL si hay ventana."""
+        if campos is not None:
+            self._ubicar_en_terreno(campos)
+
         if ctx is None:
+            return
+
+        try:
+            from OpenGL import GL as gl
+        except ImportError:
             return
 
         # Vértices de un cubo simple 3D
@@ -99,9 +128,10 @@ class Arrastre(Modulo):
         """
         frag_code = """
         #version 330 core
+        uniform vec3 uColor;
         out vec4 FragColor;
         void main() {
-            FragColor = vec4(0.9, 0.2, 0.2, 1.0); // Red auto dummy
+            FragColor = vec4(uColor, 1.0);
         }
         """
 
@@ -132,45 +162,112 @@ class Arrastre(Modulo):
         gl.glEnableVertexAttribArray(0)
         gl.glBindVertexArray(0)
 
+    def _mover_cuerpo(self, campos, pos: np.ndarray, rot: float, alto: float,
+                      factor_arrastre: float, dt: float) -> tuple[np.ndarray, float]:
+        """Aplica física de arrastre v1 si W > UMBRAL_ARRASTRE_M."""
+        ix, iz = celda_de_metros(float(pos[0]), float(pos[2]))
+        w_val = float(campos.W[iz, ix])
+        h_val = float(campos.H[iz, ix])
+
+        # Si el agua supera el umbral de profundidad, se aplica fuerza de arrastre y flotación
+        if w_val > cfg.UMBRAL_ARRASTRE_M:
+            u_val = float(campos.U[iz, ix])
+            v_val = float(campos.V[iz, ix])
+
+            # La fuerza crece con la profundidad relativa y la velocidad del flujo
+            intensidad = min(1.5, w_val / cfg.NIVEL_CRITICO_M)
+            vx = u_val * factor_arrastre * (0.5 + intensidad)
+            vz = v_val * factor_arrastre * (0.5 + intensidad)
+
+            nx = float(np.clip(pos[0] + vx * dt, 0.0, cfg.WORLD_M - 1.0))
+            nz = float(np.clip(pos[2] + vz * dt, 0.0, cfg.WORLD_M - 1.0))
+
+            # Evitar atravesar casas en pie (obstaculo)
+            nix, niz = celda_de_metros(nx, nz)
+            if not campos.obstaculo[niz, nix]:
+                pos[0] = nx
+                pos[2] = nz
+                h_val = float(campos.H[niz, nix])
+                w_val = float(campos.W[niz, nix])
+
+            # Giro proporcional a la rapidez del flujo
+            rapidez = float(np.hypot(vx, vz))
+            rot += rapidez * 0.12 * dt
+
+            # Flotación sobre la superficie del agua (H + W)
+            pos[1] = h_val + w_val * 0.75 + alto * 0.35
+        else:
+            # En seco o agua somera, reposa sobre el terreno H
+            pos[1] = h_val + alto * 0.5
+
+        return pos, rot
+
     def actualizar(self, campos, dt: float):
-        """Muestra U y V desde 'campos' y actualiza la posición del auto de prueba."""
-        ix = int(np.clip(self.pos_auto[0] / cfg.CELL_M, 0, cfg.GRID - 1))
-        iz = int(np.clip(self.pos_auto[2] / cfg.CELL_M, 0, cfg.GRID - 1))
+        """Actualiza el auto y las 20-50 piezas según W, U, V."""
+        if dt <= 0.0:
+            return
 
-        # Muestreo del flujo de velocidad (Contrato)
-        u_val = campos.U[iz, ix]
-        v_val = campos.V[iz, ix]
+        self.pos_auto, self.rot_auto = self._mover_cuerpo(
+            campos, self.pos_auto, self.rot_auto,
+            float(self.tamano_auto[1]), cfg.FACTOR_ARRASTRE_AUTO, dt
+        )
 
-        # Traslación progresiva impulsada por el agua simulada/falsa
-        self.pos_auto[0] += u_val * dt
-        self.pos_auto[2] += v_val * dt
+        for i in range(self.num_piezas):
+            self.piezas_pos[i], self.piezas_rot[i] = self._mover_cuerpo(
+                campos, self.piezas_pos[i], float(self.piezas_rot[i]),
+                float(self.piezas_escala[i, 1]), cfg.FACTOR_ARRASTRE_PIEZA, dt
+            )
+
+    def _dibujar_caja(self, gl, vp, loc_mvp, loc_color, pos, rot, escala, color):
+        self.stack.push()
+        self.stack.translate(float(pos[0]), float(pos[1]), float(pos[2]))
+        self.stack.rotate_y(float(rot))
+        self.stack.scale(float(escala[0]), float(escala[1]), float(escala[2]))
+
+        mvp = vp @ self.stack.top()
+        gl.glUniformMatrix4fv(loc_mvp, 1, gl.GL_TRUE, mvp)
+        gl.glUniform3f(loc_color, *color)
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 36)
+        self.stack.pop()
 
     def dibujar(self, campos, ctx):
-        """Aplica transformaciones de la pila de matrices y renderiza el objeto dummy."""
+        """Dibuja el auto y todas las piezas reutilizando el VAO y la pila de matrices."""
         if not hasattr(ctx, "vp") or ctx.vp is None or self.shader_program is None:
             return
 
-        self.stack.push()
-        # Posicionar y escalar la caja de prueba usando nuestra PilaMatrices
-        self.stack.translate(self.pos_auto[0], self.pos_auto[1], self.pos_auto[2])
-        self.stack.scale(self.tamano_auto[0], self.tamano_auto[1], self.tamano_auto[2])
-
-        matriz_modelo = self.stack.top()
-        mvp = ctx.vp @ matriz_modelo
+        try:
+            from OpenGL import GL as gl
+        except ImportError:
+            return
 
         gl.glUseProgram(self.shader_program)
         loc_mvp = gl.glGetUniformLocation(self.shader_program, "uMVP")
-        gl.glUniformMatrix4fv(loc_mvp, 1, gl.GL_TRUE, mvp)
-
+        loc_color = gl.glGetUniformLocation(self.shader_program, "uColor")
         gl.glBindVertexArray(self.vao)
-        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 36)
+
+        # 1. Dibujar auto (rojo intenso)
+        self._dibujar_caja(
+            gl, ctx.vp, loc_mvp, loc_color,
+            self.pos_auto, self.rot_auto, self.tamano_auto, (0.90, 0.18, 0.18)
+        )
+
+        # 2. Dibujar piezas/escombros (tono madera/concreto)
+        for i in range(self.num_piezas):
+            self._dibujar_caja(
+                gl, ctx.vp, loc_mvp, loc_color,
+                self.piezas_pos[i], self.piezas_rot[i], self.piezas_escala[i], (0.65, 0.52, 0.36)
+            )
+
         gl.glBindVertexArray(0)
         gl.glUseProgram(0)
 
-        self.stack.pop()
-
     def cerrar(self):
-        """Libera los recursos de OpenGL."""
+        """Libera recursos OpenGL."""
+        try:
+            from OpenGL import GL as gl
+        except ImportError:
+            return
+
         if self.vao:
             gl.glDeleteVertexArrays(1, [self.vao])
         if self.vbo:
