@@ -12,7 +12,7 @@ alarma, los medidores circulares (punto medio), la gráfica (Bresenham) y los mi
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pytest                     # 344 pruebas, no necesitan ventana
+python -m pytest                     # 349 pruebas, no necesitan ventana
 python main.py                       # vista de mapa 2D + HUD. ESC sale, ESPACIO pausa, R reinicia la ola
 python main.py --3d                  # vista 3D (flechas y ratón mueven la cámara, la rueda hace zoom)
 ```

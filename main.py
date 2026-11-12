@@ -21,9 +21,11 @@ from hud.panel import PanelHUD
 from modulos.arrastre import Arrastre
 from modulos.base import Modulo
 from modulos.cresta import Cresta
-from modulos.horizonte import Horizonte
+from modulos.horizonte import AguaHorizonte, Horizonte
 from modulos.iluminacion import Iluminacion
+from modulos.iluminacion_cpu import tinte_alarma
 from modulos.materiales import Materiales
+from modulos.materiales import _alarma as alarma_tinte
 from modulos.terreno import Terreno
 from vista_mapa import imagen_mapa
 
@@ -85,11 +87,15 @@ class Contexto:
 
 
 def crear_modulos(vista3d=False, ola_falsa=False):
+    # Orden de dibujo: primero todo lo opaco y después lo transparente (el agua no escribe
+    # profundidad, así que lo opaco que venga después la taparía).
+    horizonte = Horizonte()
     modulos = [
         Terreno(),          # rol 2
+        horizonte,          # rol 2: terreno fuera del mapa (opaco)
         Arrastre(),         # rol 3
-        Materiales(),       # rol 4
-        Horizonte(),        # rol 2: terreno y mar siguen más allá del mapa
+        Materiales(),       # rol 4: agua transparente
+        AguaHorizonte(horizonte),   # rol 2: agua fuera del mapa (transparente)
         Cresta(),           # rol 2 (después del agua: también es transparente)
         Iluminacion(),      # rol 5
         ModuloHUD(ola_falsa),   # rol 1 (siempre al final: se dibuja encima)
@@ -201,7 +207,8 @@ def main():
         if args.vista3d:
             zona = ctx.ancho_fb - ctx.ancho_fb * cfg.HUD_ANCHO // cfg.VENTANA_ANCHO
             gl.glViewport(0, 0, zona, ctx.alto_fb)
-            gl.glClearColor(*cfg.COLOR_CIELO, 1.0)
+            # El cielo también se tiñe con la alarma, igual que lo que dibujan los shaders.
+            gl.glClearColor(*[float(c) for c in tinte_alarma(cfg.COLOR_CIELO, alarma_tinte(campos))], 1.0)
         else:
             gl.glViewport(0, 0, ctx.ancho_fb, ctx.alto_fb)
             gl.glClearColor(0.08, 0.09, 0.12, 1.0)

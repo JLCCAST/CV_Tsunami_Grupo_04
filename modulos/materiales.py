@@ -35,7 +35,7 @@ SOL_COLOR_DEFECTO = (1.0, 0.96, 0.88)
 NOMBRES_UNIFORMS = (
     "uVP", "uOrigen", "uCelda", "uTamMundo",
     "uSolDir", "uSolColor", "uCamPos", "uAlarma", "uMapaHumedad",
-    "uDetalle", "uEscalaDetalle", "uIntDetalle",
+    "uDetalle", "uEscalaDetalle", "uIntDetalle", "uCielo",
 )
 
 NOMBRES_UNIFORMS_AGUA = (
@@ -99,6 +99,7 @@ uniform vec3 uSolDir;
 uniform vec3 uSolColor;
 uniform vec3 uCamPos;
 uniform float uAlarma;
+uniform vec3 uCielo;
 
 out vec4 fragColor;
 
@@ -149,6 +150,7 @@ void main() {
     col = mix(col, vec3(0.10, 0.25, 0.35), clamp(-vPos.y / 6.0, 0.0, 0.6));
 
     col = tinte_alarma(col, uAlarma);
+    col = con_niebla(col, factor_niebla(vPos, uCamPos), uCielo, uAlarma);
     fragColor = vec4(col, 1.0);
 }
 """
@@ -215,7 +217,8 @@ void main() {
     float espuma = clamp(borde * (0.3 + 1.4 * ruido), 0.0, 1.0);
     col = mix(col, vec3(0.95, 0.97, 1.0), espuma * 0.8);
     alfa = max(alfa, espuma * 0.7);
-    fragColor = vec4(col, alfa);
+    float niebla = factor_niebla(vPos, uCamPos);
+    fragColor = vec4(con_niebla(col, niebla, uCielo, uAlarma), mix(alfa, 1.0, niebla));
 }
 """
 
@@ -466,6 +469,7 @@ class Materiales(Modulo):
         gl.glUniform1i(u["uDetalle"], 2)
         gl.glUniform1f(u["uEscalaDetalle"], float(DETALLE_ESCALA))
         gl.glUniform1f(u["uIntDetalle"], float(DETALLE_INTENSIDAD))
+        gl.glUniform3f(u["uCielo"], *[float(c) for c in cfg.COLOR_CIELO])
 
         gl.glActiveTexture(gl.GL_TEXTURE0)
         return True

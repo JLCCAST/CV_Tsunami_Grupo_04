@@ -28,7 +28,7 @@ BAJA_TIERRA = 0.8           # la tierra lejana baja este tanto de su alto en el 
 BAJA_TIERRA_M = 1200.0      # ...a esta distancia, para que los cerros no sigan como una meseta
 COLOR_LEJANIA = np.array([0.40, 0.52, 0.36])   # vegetación vista de lejos: la tierra lejana va a este color
 LEJANIA_M = 700.0
-NIEBLA_M = (60.0, 1400.0)   # distancia al borde del mapa donde el mar empieza y termina de fundirse con el cielo
+NIEBLA_M = (200.0, 2600.0)  # niebla extra del mar según la distancia al borde (se suma a la de la cámara)
 NIEBLA_TIERRA_M = (40.0, 500.0)   # la tierra lejana se pierde antes, como cerros en la bruma
 
 
@@ -173,7 +173,12 @@ void main() {
     vec3 col = phong_mojado(N, V, L, vColor, uSolColor, 0.35, 0.65, 0.10, 16.0, 0.0, 1.0);
     col = mix(col, vec3(0.10, 0.25, 0.35), clamp(-vPos.y / 6.0, 0.0, 0.6));
     col = tinte_alarma(col, uAlarma);
-    fragColor = vec4(mix(col, uCielo, smoothstep(uNiebla.x, uNiebla.y, vDist)), 1.0);
+    // Niebla de la cámara (la misma de todo el mapa) más una propia que crece al alejarse del borde.
+    // La propia es solo para la tierra: el fondo marino se ve a través del agua y, si se aclarara,
+    // el agua de fuera quedaría más clara que la del mapa.
+    float propia = vPos.y >= 0.0 ? smoothstep(uNiebla.x, uNiebla.y, vDist) : 0.0;
+    float f = max(factor_niebla(vPos, uCamPos), propia);
+    fragColor = vec4(con_niebla(col, f, uCielo, uAlarma), 1.0);
 }
 """
 
@@ -219,8 +224,8 @@ void main() {
     col = tinte_alarma(col, uAlarma);
     float alfa = mix(uAlfaMin, uAlfaMax, clamp(vProf / uDMax, 0.0, 1.0));
     alfa *= smoothstep(uUmbral, uUmbral + 0.3, vProf);
-    float niebla = smoothstep(uNiebla.x, uNiebla.y, vDist);
-    fragColor = vec4(mix(col, uCielo, niebla), mix(alfa, 1.0, niebla));
+    float niebla = max(factor_niebla(vPos, uCamPos), smoothstep(uNiebla.x, uNiebla.y, vDist));
+    fragColor = vec4(con_niebla(col, niebla, uCielo, uAlarma), mix(alfa, 1.0, niebla));
 }
 """
 
@@ -262,26 +267,44 @@ class Horizonte(Modulo):
         self.agua[:, 1] = y + ELEVACION_AGUA
         self.agua[:, 3] = prof
 
+    def _comunes(self, ctx):
+        from modulos.materiales import SOL_COLOR_DEFECTO, SOL_DIR_DEFECTO
+        return {
+            "uSolDir": getattr(ctx, "sol_dir", SOL_DIR_DEFECTO),
+            "uSolColor": getattr(ctx, "sol_color", SOL_COLOR_DEFECTO),
+            "uCamPos": ctx.cam_pos, "uCielo": cfg.COLOR_CIELO,
+        }
+
     def dibujar(self, campos, ctx):
+        """Terreno de fuera del mapa. Es opaco: va con lo opaco, ANTES del agua transparente del
+        rol 4. Si se dibujara después, taparía el agua del mapa (el agua no escribe profundidad)."""
         vp, cam = getattr(ctx, "vp", None), getattr(ctx, "cam_pos", None)
         if self._gl is None or vp is None or cam is None:
             return
-        from modulos.materiales import (ALFA_MAX, ALFA_MIN, PROF_MAX_AGUA, SOL_COLOR_DEFECTO,
-                                        SOL_DIR_DEFECTO, _alarma)
+        from modulos.materiales import _alarma
         gl = self._gl["gl"]
-        comunes = {
-            "uSolDir": getattr(ctx, "sol_dir", SOL_DIR_DEFECTO),
-            "uSolColor": getattr(ctx, "sol_color", SOL_COLOR_DEFECTO),
-            "uCamPos": cam, "uCielo": cfg.COLOR_CIELO,
-        }
         prueba_prof = gl.glIsEnabled(gl.GL_DEPTH_TEST)
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glDisable(gl.GL_CULL_FACE)
-
-        u = self._usar(gl, "t", vp, comunes, _alarma(campos))
+        u = self._usar(gl, "t", vp, self._comunes(ctx), _alarma(campos))
         gl.glUniform2f(u["uNiebla"], *NIEBLA_TIERRA_M)
         gl.glBindVertexArray(self._gl["vao_t"])
         gl.glDrawElements(gl.GL_TRIANGLES, self._gl["n_idx"], gl.GL_UNSIGNED_INT, None)
+        gl.glBindVertexArray(0)
+        if not prueba_prof:
+            gl.glDisable(gl.GL_DEPTH_TEST)
+
+    def dibujar_agua(self, campos, ctx):
+        """Agua de fuera del mapa: transparente, va después del agua del rol 4 (ver AguaHorizonte)."""
+        vp, cam = getattr(ctx, "vp", None), getattr(ctx, "cam_pos", None)
+        if self._gl is None or vp is None or cam is None:
+            return
+        from modulos.materiales import ALFA_MAX, ALFA_MIN, PROF_MAX_AGUA, _alarma
+        gl = self._gl["gl"]
+        comunes = self._comunes(ctx)
+        prueba_prof = gl.glIsEnabled(gl.GL_DEPTH_TEST)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glDisable(gl.GL_CULL_FACE)
 
         datos = np.ascontiguousarray(self.agua, np.float32)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self._gl["vbo_a"])
@@ -357,3 +380,17 @@ class Horizonte(Modulo):
             "u_t": {n: gl.glGetUniformLocation(prog_t, n) for n in UNIFORMS},
             "u_a": {n: gl.glGetUniformLocation(prog_a, n) for n in UNIFORMS},
         }
+
+
+class AguaHorizonte(Modulo):
+    """Segundo paso del horizonte: el agua de fuera del mapa, con lo transparente.
+
+    En crear_modulos() va después de Materiales (rol 4), y Horizonte va antes, con lo opaco.
+    """
+    nombre = "horizonte, agua (rol 2)"
+
+    def __init__(self, horizonte):
+        self.horizonte = horizonte
+
+    def dibujar(self, campos, ctx):
+        self.horizonte.dibujar_agua(campos, ctx)

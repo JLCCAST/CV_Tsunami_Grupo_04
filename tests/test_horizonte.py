@@ -9,7 +9,7 @@ import pytest
 import config as cfg
 from campos import Campos
 from modulos import horizonte as hz
-from modulos.horizonte import Bordes, Horizonte, caida_ola, promedio_movil
+from modulos.horizonte import AguaHorizonte, Bordes, Horizonte, caida_ola, promedio_movil
 
 G = cfg.GRID
 
@@ -105,6 +105,8 @@ def test_ciclo_gl_con_contexto_simulado(monkeypatch):
     h.iniciar(c, ctx)
     h.actualizar(c, 0.1)
     h.dibujar(c, ctx)
-    assert gl.glDrawElements.call_count == 2          # terreno y agua
+    assert gl.glDrawElements.call_count == 1          # terreno (opaco)
+    AguaHorizonte(h).dibujar(c, ctx)
+    assert gl.glDrawElements.call_count == 2          # y después el agua (transparente)
     h.cerrar()
     sys.modules.pop("gl_util", None)

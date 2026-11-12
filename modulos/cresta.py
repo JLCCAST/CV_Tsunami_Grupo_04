@@ -145,13 +145,16 @@ void main() {
 }
 """
 
-FRAG = """#version 330 core
+# Cuerpo sin '#version': armar_fragment() del rol 5 le antepone iluminacion.glsl (tinte_alarma).
+FRAG = """
 in vec3 vPos;
 in vec3 vNormal;
 in vec3 vColor;
 in float vAlfa;
 uniform vec3 uSol;
 uniform vec3 uCam;
+uniform float uAlarma;
+uniform vec3 uCielo;
 out vec4 fragColor;
 void main() {
     vec3 N = normalize(vNormal);
@@ -160,7 +163,9 @@ void main() {
     vec3 L = normalize(uSol);
     float difuso = max(dot(N, L), 0.0);
     float brillo = pow(max(dot(N, normalize(L + V)), 0.0), 60.0);
-    fragColor = vec4(vColor * (0.5 + 0.5 * difuso) + vec3(0.45 * brillo), vAlfa);
+    vec3 col = vColor * (0.5 + 0.5 * difuso) + vec3(0.45 * brillo);
+    col = con_niebla(tinte_alarma(col, uAlarma), factor_niebla(vPos, uCam), uCielo, uAlarma);
+    fragColor = vec4(col, vAlfa);
 }
 """
 
@@ -200,6 +205,9 @@ class Cresta(Modulo):
         gl.glUniformMatrix4fv(self._gl["u_vp"], 1, gl.GL_TRUE, np.ascontiguousarray(vp, np.float32))
         gl.glUniform3f(self._gl["u_sol"], -0.4, 0.8, -0.3)
         gl.glUniform3f(self._gl["u_cam"], *[float(c) for c in cam])
+        from modulos.materiales import _alarma
+        gl.glUniform1f(self._gl["u_alarma"], float(_alarma(campos)))
+        gl.glUniform3f(self._gl["u_cielo"], *[float(c) for c in cfg.COLOR_CIELO])
         gl.glBindVertexArray(self._gl["vao"])
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, len(datos))
         gl.glBindVertexArray(0)
@@ -221,8 +229,9 @@ class Cresta(Modulo):
         from OpenGL import GL as gl
 
         from gl_util import compilar_programa
+        from modulos.iluminacion import armar_fragment
 
-        prog = compilar_programa(VERT, FRAG)
+        prog = compilar_programa(VERT, armar_fragment(FRAG))
         vao, vbo = gl.glGenVertexArrays(1), gl.glGenBuffers(1)
         gl.glBindVertexArray(vao)
         gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vbo)
@@ -236,4 +245,6 @@ class Cresta(Modulo):
             "u_vp": gl.glGetUniformLocation(prog, "uVP"),
             "u_sol": gl.glGetUniformLocation(prog, "uSol"),
             "u_cam": gl.glGetUniformLocation(prog, "uCam"),
+            "u_alarma": gl.glGetUniformLocation(prog, "uAlarma"),
+            "u_cielo": gl.glGetUniformLocation(prog, "uCielo"),
         }

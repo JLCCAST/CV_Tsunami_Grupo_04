@@ -36,8 +36,8 @@ def rampa_color(t) -> np.ndarray:
 def tinte_alarma(color, alarma: float) -> np.ndarray:
     """Oscurece y vira a rojizo desde alarma 0.6 hasta el máximo en 1.0."""
     color = np.asarray(color, np.float32)
-    oscuro = color * 0.55
-    rojizo = oscuro * np.array((1.40, 0.60, 0.55), np.float32)
+    oscuro = color * 0.80
+    rojizo = oscuro * np.array((1.25, 0.82, 0.78), np.float32)
     return _mix(color, rojizo, _smoothstep(0.6, 1.0, alarma))
 
 
