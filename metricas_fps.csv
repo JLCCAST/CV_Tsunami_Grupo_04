@@ -8,3 +8,6 @@ fecha,gpu,grid,ventana,msaa,vsync,frames,fps_prom,ms_prom,ms_p95,fps_1pct_low,no
 2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,125.0,8.0,,,"semana2 todo junto, mar en calma"
 2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,162.2,6.17,,,"semana2 todo junto, mar en calma"
 2026-11-09 01:00,Intel(R) UHD Graphics,128,1280x720,0,False,600,157.9,6.33,,,"semana2 todo junto, mar en calma"
+2026-11-12 03:57,"llvmpipe (LLVM 20.1.2, 256 bits)",128,1280x720,0,False,600,12.8,78.17,,,semana2 todo junto
+2026-11-12 03:58,"llvmpipe (LLVM 20.1.2, 256 bits)",128,1280x720,0,False,600,13.0,77.17,,,semana2 todo junto
+2026-11-12 03:59,"llvmpipe (LLVM 20.1.2, 256 bits)",128,1280x720,0,False,600,13.1,76.5,,,semana2 todo junto
