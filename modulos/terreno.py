@@ -6,7 +6,7 @@ import config as cfg
 from modulos.base import Modulo
 from modulos.casas import malla_casa, piezas_casa
 from modulos.dano import ModeloDano
-from modulos.terreno_gen import generar_escenario, malla_terreno
+from modulos.terreno_gen import generar_escenario, malla_muelles, malla_terreno
 
 MODO_SIMPLE = False
 
@@ -137,6 +137,14 @@ class Terreno(Modulo):
             else:
                 gl.glUniform3f(self._gl["u_origen"], *self.origenes[i])
             gl.glDrawArrays(gl.GL_TRIANGLES, first, count)
+
+        if self._gl["n_muelles"]:                         # los muelles ya están en coordenadas del mundo
+            if con_humedad:
+                materiales.fijar_origen(0.0, 0.0, 0.0)
+            else:
+                gl.glUniform3f(self._gl["u_origen"], 0.0, 0.0, 0.0)
+            gl.glBindVertexArray(self._gl["vao_muelles"])
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, self._gl["n_muelles"])
         gl.glBindVertexArray(0)
         gl.glDisable(gl.GL_CULL_FACE)
         if not prueba_prof:
@@ -173,12 +181,12 @@ class Terreno(Modulo):
         if self._gl is None:
             return
         gl = self._gl["gl"]
-        bufs = [b for k in ("t", "c") for b in self._gl[k][1:] if b is not None]
+        bufs = [b for k in ("t", "c", "m") for b in self._gl[k][1:] if b is not None]
         for lista in self._piezas_gpu.values():
             for vao, vbo, _n, _c in lista:
                 bufs.append(vbo)
                 gl.glDeleteVertexArrays(1, [vao])
-        gl.glDeleteVertexArrays(2, [self._gl["vao_terreno"], self._gl["vao_casas"]])
+        gl.glDeleteVertexArrays(3, [self._gl["vao_terreno"], self._gl["vao_casas"], self._gl["vao_muelles"]])
         gl.glDeleteBuffers(len(bufs), bufs)
         gl.glDeleteProgram(self._gl["prog"])
         self._gl = None
@@ -194,8 +202,11 @@ class Terreno(Modulo):
         from gl_util import compilar_programa
 
         prog = compilar_programa(VERT, FRAG)
-        v, idx = malla_terreno(self.escenario.H)
+        v, idx = malla_terreno(self.escenario.H, calles=self.escenario.mascara_calles)
         vao_t, vbo_t, ebo_t = self._crear_vao(gl, v, idx)
+        muelles = (malla_muelles(self.escenario.muelles, self.escenario.H) if self.escenario.muelles
+                   else np.zeros((0, 9), np.float32))
+        vao_m, vbo_m, _ = self._crear_vao(gl, muelles)
 
         trozos, rangos, pos = [], {}, 0
         for tipo in sorted(set(self.escenario.tipos)):
@@ -215,9 +226,12 @@ class Terreno(Modulo):
             "u_sol": gl.glGetUniformLocation(prog, "uSol"),
             "vao_terreno": vao_t,
             "vao_casas": vao_c,
+            "vao_muelles": vao_m,
             "t": (vao_t, vbo_t, ebo_t),
             "c": (vao_c, vbo_c, None),
+            "m": (vao_m, vbo_m, None),
             "n_idx": len(idx),
+            "n_muelles": len(muelles),
             "rangos": rangos,
         }
 

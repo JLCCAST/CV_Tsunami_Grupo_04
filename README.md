@@ -12,7 +12,7 @@ alarma, los medidores circulares (punto medio), la gráfica (Bresenham) y los mi
 
 ```bash
 python -m pip install -r requirements.txt
-python -m pytest                     # 289 pruebas, no necesitan ventana
+python -m pytest                     # 330 pruebas, no necesitan ventana
 python main.py                       # vista de mapa 2D + HUD. ESC sale, ESPACIO pausa, R reinicia la ola
 python main.py --3d                  # vista 3D (flechas y ratón mueven la cámara, la rueda hace zoom)
 ```
@@ -74,7 +74,8 @@ Milisegundos por paso (laptop con Ryzen y Radeon 780M, 60 pasos por segundo, eve
 | `hud/lienzo.py` | lienzo NumPy con Bresenham y punto medio propios | Rol 1 |
 | `hud/panel.py` | panel: alarma, medidores, gráfica, mini-mapa, ms por paso | Rol 1 |
 | `vista_mapa.py` | imagen 2D de terreno, agua y casas | Rol 1 |
-| `modulos/terreno.py`, `terreno_gen.py`, `casas.py`, `csg.py`, `dano.py` | terreno diamond-square, costa en Bézier, casas CSG y estados de daño | Rol 2 |
+| `modulos/terreno.py`, `terreno_gen.py`, `casas.py`, `csg.py`, `dano.py` | terreno diamond-square en forma de bahía, costa y calles en Bézier, muelles, casas CSG y estados de daño | Rol 2 |
+| `modulos/brep.py`, `modulos/cresta.py` | techos a dos aguas en B-rep (fórmula de Euler) y cresta de la ola con parches de Bézier sobre `frente_x` | Rol 2 |
 | `modulos/arrastre.py`, `camara3d.py` | cámara orbital, pila de matrices y arrastre | Rol 3 |
 | `modulos/materiales.py`, `demo_materiales.py` | texturas, humedad, agua transparente y espuma | Rol 4 |
 | `modulos/iluminacion.py`, `shaders/iluminacion.glsl` | sol, Phong, mojado, tinte de alarma y rampas de color | Rol 5 |

@@ -20,6 +20,7 @@ from campos import Campos
 from hud.panel import PanelHUD
 from modulos.arrastre import Arrastre
 from modulos.base import Modulo
+from modulos.cresta import Cresta
 from modulos.iluminacion import Iluminacion
 from modulos.materiales import Materiales
 from modulos.terreno import Terreno
@@ -87,6 +88,7 @@ def crear_modulos(vista3d=False, ola_falsa=False):
         Terreno(),          # rol 2
         Arrastre(),         # rol 3
         Materiales(),       # rol 4
+        Cresta(),           # rol 2 (después del agua: también es transparente)
         Iluminacion(),      # rol 5
         ModuloHUD(ola_falsa),   # rol 1 (siempre al final: se dibuja encima)
     ]

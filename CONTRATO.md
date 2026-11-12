@@ -66,6 +66,24 @@ Lo que conviene saber al leer el agua:
 - En `main.py` el agua se actualiza **antes** que los módulos en cada cuadro, así que en
   `actualizar()` cada módulo ya ve el agua del cuadro actual.
 
+## Escenario del rol 2 (no es parte de `Campos`)
+
+Además de `H`, `casas`, `dano` y `obstaculo`, `Terreno().escenario` guarda datos que solo
+sirven para dibujar o para ubicar objetos. No cambian durante la simulación:
+
+| Atributo | Tipo | Para qué |
+|---|---|---|
+| `calles` | lista de `[n, 2]` con `(x, z)` en m | dos avenidas paralelas a la costa y tres transversales, todas curvas de Bézier. Rol 4: asfalto |
+| `mascara_calles` | `bool [G,G]` | celdas cubiertas por una calle. Ninguna casa cae encima |
+| `muelles` | lista de dicts `x0, x1, z, ancho, y` (m) | tres muelles en el centro de la bahía; `x0` es la punta sobre el mar. Rol 3: barcos |
+
+La costa es una bahía (curva de Bézier) con cerros en las dos puntas. Los techos a dos aguas de
+las casas son B-rep (`modulos/brep.py`) y cumplen la fórmula de Euler.
+
+La cresta de la ola (`modulos/cresta.py`) es decorado del rol 2: lee `frente_x` y `H`, arma
+parches bicúbicos de Bézier delante del frente y baja hasta desaparecer cuando la profundidad
+bajo el frente es menor que 4 m. No escribe ningún campo.
+
 ## Datos falsos (semana 1)
 
 `agua/datos_falsos.py` rellena todos los campos (terreno en pendiente, 6 casas y una ola de
