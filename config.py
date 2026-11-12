@@ -27,3 +27,8 @@ DANO_DESTRUIDA = 2
 
 HORA_INICIAL = 11.0
 CICLO_DIA_S = 0.0
+
+UMBRAL_ARRASTRE_M = 0.25      # profundidad mínima W (m) para empezar a mover objetos
+FACTOR_ARRASTRE_AUTO = 0.65   # fracción de la velocidad (U, V) transferida al auto
+FACTOR_ARRASTRE_PIEZA = 0.90  # las piezas ligeras se arrastran más rápido que el auto
+CANTIDAD_PIEZAS_S2 = 40       # entre 20 y 50 piezas requeridas en la Semana 2
