@@ -1,6 +1,7 @@
 import numpy as np
 
 import config as cfg
+from modulos.brep import techo_dos_aguas
 from modulos.csg import (
     MAT_CIMIENTO,
     MAT_ESCOMBRO,
@@ -14,6 +15,9 @@ from modulos.csg import (
 ALTO_PISO = 3.0
 ESPESOR = 0.4
 Y0 = 0.15
+ALERO = 0.4             # cuánto sobresale la losa del techo de las paredes
+ESPESOR_LOSA = 0.3
+PENDIENTE_TECHO = 0.5   # alto del techo a dos aguas = PENDIENTE_TECHO * medio ancho de la casa
 
 TIPOS = [(w, d, p) for w in (2, 3, 4) for d in (2, 3, 4) for p in (1, 2)]
 
@@ -54,9 +58,7 @@ def solido_casa(w, d, pisos, estado, cell_m=None):
             (hx - 0.1 - t, y0 + ALTO_PISO + 0.25, hz - 0.1 - t),
             MAT_PARED,
         )
-    s.sumar((-hx - 0.4, ytech, -hz - 0.4), (hx + 0.4, ytech + 0.3, hz + 0.4), MAT_TECHO)
-    s.sumar((-hx * 0.7, ytech + 0.3, -hz * 0.7), (hx * 0.7, ytech + 0.9, hz * 0.7), MAT_TECHO)
-    s.sumar((-hx * 0.35, ytech + 0.9, -hz * 0.35), (hx * 0.35, ytech + 1.4, hz * 0.35), MAT_TECHO)
+    s.sumar((-hx - ALERO, ytech, -hz - ALERO), (hx + ALERO, ytech + ESPESOR_LOSA, hz + ALERO), MAT_TECHO)
 
     s.restar((-hx - 0.2, y0 + 0.2, -0.7), (-hx + 0.1 + t + 0.1, y0 + 2.4, 0.7))
 
@@ -104,9 +106,29 @@ def solido_casa(w, d, pisos, estado, cell_m=None):
     return s
 
 
+def techo_casa(w, d, pisos, estado, cell_m=None):
+    """Techo a dos aguas en B-rep (ver brep.py), apoyado sobre la losa del CSG.
+
+    Intacta: techo completo. Dañada: solo la mitad de atrás, porque el CSG ya le quitó la
+    esquina de adelante a la losa. Destruida: sin techo (devuelve None).
+    """
+    cell_m = cfg.CELL_M if cell_m is None else cell_m
+    _sx, _sz, hx, hz, alto = _dims(w, d, pisos, cell_m)
+    if estado == cfg.DANO_DESTRUIDA:
+        return None
+    y_base = Y0 + alto + ESPESOR_LOSA
+    alto_techo = PENDIENTE_TECHO * hx
+    if estado == cfg.DANO_INTACTA:
+        return techo_dos_aguas(hx, hz, y_base, alto_techo, ALERO)
+    return techo_dos_aguas(hx, hz / 2, y_base, alto_techo, ALERO).trasladar((0.0, 0.0, hz / 2))
+
+
 def malla_casa(w, d, pisos, estado, cell_m=None, simple=False):
-    f = solido_simple if simple else solido_casa
-    return f(w, d, pisos, estado, cell_m).malla()
+    if simple:
+        return solido_simple(w, d, pisos, estado, cell_m).malla()
+    m = solido_casa(w, d, pisos, estado, cell_m).malla()
+    techo = techo_casa(w, d, pisos, estado, cell_m)
+    return m if techo is None else np.concatenate([m, techo.malla()])
 
 
 def piezas_casa(w, d, pisos, cell_m=None, semilla=0, cortes=(3, 2, 3)):

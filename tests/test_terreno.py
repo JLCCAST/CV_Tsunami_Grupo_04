@@ -53,6 +53,42 @@ def test_bezier_extremos():
     assert np.allclose(p[0], c[0]) and np.allclose(p[1], c[-1])
 
 
+def test_bahia_con_cerros_en_las_puntas():
+    e = generar_escenario()
+    g = cfg.GRID
+    centro, puntas = e.x_costa[g // 2], (e.x_costa[0], e.x_costa[-1])
+    assert centro > max(puntas) + 80.0                  # el centro de la costa entra tierra adentro
+    ix_cerro = int((e.x_costa[4] + 90.0) / cfg.CELL_M)
+    ix_centro = int((e.x_costa[g // 2] + 90.0) / cfg.CELL_M)
+    assert e.H[4, ix_cerro] > e.H[g // 2, ix_centro] + 10.0      # a la misma distancia de la costa, la punta es cerro
+
+
+def test_calles_en_bezier_y_sin_casas_encima():
+    from modulos.terreno_gen import CTRL_COSTA_X, D_AVENIDAS, calles_bezier
+    e = generar_escenario()
+    assert len(e.calles) == 5 and e.mascara_calles.any()
+    ancho = cfg.GRID * cfg.CELL_M
+    for d, avenida in zip(D_AVENIDAS, calles_bezier()[:2]):
+        assert np.allclose(avenida[0], (CTRL_COSTA_X[0] + d, 0.0))     # Bézier pasa por sus extremos
+        assert np.allclose(avenida[-1], (CTRL_COSTA_X[-1] + d, ancho))
+    for x0, z0, x1, z1 in e.casas:
+        assert not e.mascara_calles[z0:z1, x0:x1].any()
+    v, _ = malla_terreno(e.H, calles=e.mascara_calles)
+    gris = v[e.mascara_calles.ravel(), 6:9]
+    assert np.allclose(gris[:, 0], gris[:, 1], atol=0.08) and np.allclose(gris[:, 1], gris[:, 2], atol=0.08)
+
+
+def test_muelles_sobre_el_mar():
+    from modulos.terreno_gen import malla_muelles
+    e = generar_escenario()
+    assert len(e.muelles) == 3
+    for m in e.muelles:
+        assert altura_en(e.H, m["x0"], m["z"]) < cfg.NIVEL_MAR_M - 1.0      # la punta está sobre el agua
+        assert altura_en(e.H, m["x1"], m["z"]) > cfg.NIVEL_MAR_M             # el otro extremo toca tierra
+    malla = malla_muelles(e.muelles, e.H)
+    assert len(malla) > 0 and volumen_firmado(malla) > 0
+
+
 def test_casas_validas():
     e = generar_escenario()
     assert 30 <= len(e.casas) <= 120
@@ -194,7 +230,7 @@ def test_ciclo_gl_con_contexto_simulado(monkeypatch):
     ctx = types.SimpleNamespace(ancho_fb=1280, alto_fb=720, vp=np.eye(4, dtype=np.float32))
     terreno.iniciar(campos, ctx)
     terreno.dibujar(campos, ctx)
-    assert gl.glDrawArrays.call_count == len(campos.casas)
+    assert gl.glDrawArrays.call_count == len(campos.casas) + 1      # una por casa y una para los muelles
     gl.glDrawArrays.reset_mock()
     terreno.dibujar_fragmentos(ctx, 0, 1.5)
     assert gl.glDrawArrays.call_count >= 6
