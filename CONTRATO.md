@@ -77,7 +77,13 @@ sirven para dibujar o para ubicar objetos. No cambian durante la simulación:
 | `mascara_calles` | `bool [G,G]` | celdas cubiertas por una calle. Ninguna casa cae encima |
 | `muelles` | lista de dicts `x0, x1, z, ancho, y` (m) | tres muelles en el centro de la bahía; `x0` es la punta sobre el mar. Rol 3: barcos |
 
-La costa es una bahía (curva de Bézier) con cerros en las dos puntas. Los techos a dos aguas de
+`modulos/horizonte.py` extiende el terreno y el mar unos 3 km fuera del mapa: las franjas nacen
+en el borde con el mismo alto y color, el agua que levanta la ola baja suave al nivel del mar y a
+lo lejos todo se funde con `COLOR_CIELO` (en `config.py`). Solo dibuja; no cambia ningún campo.
+Se dibuja en dos pasos: `Horizonte` (terreno, opaco) va antes del agua del rol 4 y
+`AguaHorizonte` (agua, transparente) va después.
+
+La costa es una bahía suave (curva de Bézier) y los cerros quedan al fondo. Los techos a dos aguas de
 las casas son B-rep (`modulos/brep.py`) y cumplen la fórmula de Euler.
 
 La cresta de la ola (`modulos/cresta.py`) es decorado del rol 2: lee `frente_x` y `H`, arma
@@ -101,9 +107,25 @@ falsos.actualizar(t)
 
 1. Crea tu clase en `modulos/<tu_archivo>.py` heredando de `modulos.base.Modulo`
    (`iniciar`, `actualizar`, `dibujar`, `cerrar`; todos opcionales).
-2. Agrégala a `crear_modulos()` en `main.py`.
+2. Agrégala a `crear_modulos()` en `main.py`. El orden importa: primero todo lo opaco
+   (terreno, casas, objetos) y después lo transparente (agua, cresta). El agua no escribe
+   profundidad, así que algo opaco dibujado después la taparía.
 3. Tus shaders GLSL van en `shaders/`. Dueños: Rol 4 el shader de materiales,
-   Rol 5 `iluminacion.glsl`.
+   Rol 5 `iluminacion.glsl`. Arma el fragment shader con `armar_fragment()` y termina el color
+   con `tinte_alarma()` y `con_niebla(color, factor_niebla(pos, cam), COLOR_CIELO, alarma)`,
+   así todos los módulos se tiñen y se pierden a lo lejos igual.
+
+## Objetos que arrastra el agua (Rol 3)
+
+`Arrastre` mueve tres grupos de objetos con el mismo modelo (umbral `UMBRAL_ARRASTRE_M`, fuerza
+proporcional a U y V, flotan sobre `H + W` con parte del cuerpo hundida):
+
+- un auto, que arranca en la avenida de la costa (25 m tierra adentro de la costa de su fila);
+- `CANTIDAD_PIEZAS_S2` piezas sueltas en la franja de playa;
+- fragmentos de casas: cuando `dano` de una casa pasa a 2, suelta 5 fragmentos dentro de su
+  caja (máximo 40 en total).
+
+Si el reloj retrocede (tecla R) todo vuelve a su lugar y los fragmentos desaparecen.
 
 ## Luz y sol (Rol 5)
 
@@ -117,6 +139,9 @@ falsos.actualizar(t)
 | `ctx.glsl_iluminacion` | str | texto de `shaders/iluminacion.glsl` |
 
 Los shaders no definen su propio sol. La alarma se aplica al final del color con `tinte_alarma(color, alarma)`.
+El tinte es suave (oscurece al 80 % y vira a rojizo) y `main.py` tiñe igual el cielo de fondo,
+así la escena entera cambia de color junta. `factor_niebla()` y `con_niebla()` (también en
+`iluminacion.glsl`) funden lo lejano con ese cielo.
 
 ## Reglas de integración
 

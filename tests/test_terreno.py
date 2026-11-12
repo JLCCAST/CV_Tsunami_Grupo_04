@@ -53,14 +53,12 @@ def test_bezier_extremos():
     assert np.allclose(p[0], c[0]) and np.allclose(p[1], c[-1])
 
 
-def test_bahia_con_cerros_en_las_puntas():
+def test_costa_en_forma_de_bahia():
     e = generar_escenario()
     g = cfg.GRID
     centro, puntas = e.x_costa[g // 2], (e.x_costa[0], e.x_costa[-1])
-    assert centro > max(puntas) + 80.0                  # el centro de la costa entra tierra adentro
-    ix_cerro = int((e.x_costa[4] + 90.0) / cfg.CELL_M)
-    ix_centro = int((e.x_costa[g // 2] + 90.0) / cfg.CELL_M)
-    assert e.H[4, ix_cerro] > e.H[g // 2, ix_centro] + 10.0      # a la misma distancia de la costa, la punta es cerro
+    assert centro > max(puntas) + 60.0                  # el centro de la costa entra tierra adentro
+    assert np.allclose(e.x_costa, e.x_costa[::-1], atol=cfg.CELL_M)      # simétrica
 
 
 def test_calles_en_bezier_y_sin_casas_encima():

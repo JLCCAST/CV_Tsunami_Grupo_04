@@ -103,8 +103,8 @@ def test_el_reflejo_mojado_es_mas_estrecho_que_el_seco():
 # ------------------------------------------- el espejo en Python sigue al GLSL
 @pytest.mark.parametrize("fragmento", [
     "smoothstep(0.6, 1.0, alarma)",
-    "vec3(1.40, 0.60, 0.55)",
-    "color * 0.55",
+    "vec3(1.25, 0.82, 0.78)",
+    "color * 0.80",
     "mix(1.0, 0.55, humedad)",
     "mix(ks, 0.90, humedad)",
     "mix(brillo, 128.0, humedad)",

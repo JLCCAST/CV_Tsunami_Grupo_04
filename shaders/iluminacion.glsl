@@ -162,8 +162,23 @@ vec3 rampa_profundidad(float d, float d_max) {
 //  ESTADO DE ALARMA: oscurece y vira a rojizo cuando alarma > ~0.6
 //  (el valor 'alarma' lo publica el Rol 1; aquí solo se aplica el tinte)
 // ---------------------------------------------------------------------
+// Suave a propósito: con 0.55 el agua quedaba casi negra y la escena no se leía.
 vec3 tinte_alarma(vec3 color, float alarma) {
-    vec3 oscuro  = color * 0.55;
-    vec3 rojizo  = oscuro * vec3(1.40, 0.60, 0.55);
+    vec3 oscuro  = color * 0.80;
+    vec3 rojizo  = oscuro * vec3(1.25, 0.82, 0.78);
     return mix(color, rojizo, smoothstep(0.6, 1.0, alarma));
+}
+
+// ---------------------------------------------------------------------
+//  NIEBLA: a lo lejos todo se funde con el color del cielo, según la
+//  distancia a la cámara. Todos los shaders usan la misma, así no quedan
+//  costuras entre módulos. El cielo lleva el mismo tinte de alarma que
+//  el fondo que pinta main.py.
+// ---------------------------------------------------------------------
+float factor_niebla(vec3 pos, vec3 cam) {
+    return smoothstep(650.0, 2600.0, distance(pos, cam));
+}
+
+vec3 con_niebla(vec3 color, float f, vec3 cielo, float alarma) {
+    return mix(color, tinte_alarma(cielo, alarma), f);
 }

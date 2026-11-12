@@ -5,11 +5,9 @@ import numpy as np
 import config as cfg
 from modulos.csg import MAT_CIMIENTO, MAT_MADERA, Solido
 
-# Bahía: los extremos de la costa (z = 0 y z = 640 m) salen hacia el mar como puntas y el
-# centro se mete tierra adentro.
-CTRL_COSTA_X = (90.0, 255.0, 255.0, 90.0)
-# Cerros en las dos puntas de la bahía: (z centro, distancia a la costa, alto, radio en z, radio en d), m.
-CERROS = ((20.0, 90.0, 22.0, 60.0, 90.0), (620.0, 90.0, 24.0, 60.0, 90.0))
+# Bahía suave: los extremos de la costa (z = 0 y z = 640 m) quedan más cerca del mar y el
+# centro entra unos 90 m tierra adentro.
+CTRL_COSTA_X = (120.0, 240.0, 240.0, 120.0)
 
 # Calles. Las avenidas son la curva de la costa corrida tierra adentro (mover todos los puntos de
 # control mueve igual la curva de Bézier). Las transversales suben desde la avenida costera.
@@ -121,15 +119,6 @@ class Escenario:
     muelles: list = field(default_factory=list)         # dicts con x0, x1 (x1 en tierra), z, ancho, y
 
 
-def _cerros(x_m, z_m, x_costa):
-    d = x_m[None, :] - x_costa[:, None]
-    z = z_m[:, None]
-    total = np.zeros_like(d)
-    for zc, dc, alto, rz, rd in CERROS:
-        total += alto * np.exp(-(((z - zc) / rz) ** 2 + ((d - dc) / rd) ** 2))
-    return total * _suave(d / 40.0)
-
-
 def generar_h(grid=None, cell_m=None, semilla=None, nivel_mar=None, simple=False):
     grid = cfg.GRID if grid is None else grid
     cell_m = cfg.CELL_M if cell_m is None else cell_m
@@ -145,7 +134,7 @@ def generar_h(grid=None, cell_m=None, semilla=None, nivel_mar=None, simple=False
     n = 1 << int(np.ceil(np.log2(grid)))
     rng = np.random.default_rng(semilla)
     f = diamond_square(n, 0.85, rng)[:grid, :grid]
-    H = perfil_base(d) + f * np.interp(d, AMP_D, AMP_M) + _cerros(x_m, x_m, x_costa) + nivel_mar
+    H = perfil_base(d) + f * np.interp(d, AMP_D, AMP_M) + nivel_mar
     return H.astype(np.float32), x_costa
 
 
@@ -308,6 +297,17 @@ def _mezcla(a, b, t):
     return a * (1 - t) + b * t
 
 
+def colores_terreno(H, pend):
+    """Color del suelo según la altura y la pendiente: fondo marino, arena, pasto y roca. [..., 3]"""
+    fondo = np.array([0.30, 0.36, 0.40])
+    arena = np.array([0.86, 0.78, 0.58])
+    pasto = np.array([0.42, 0.55, 0.30])
+    roca = np.array([0.50, 0.46, 0.42])
+    col = _mezcla(fondo, arena, _suave((H + 1.0) / 1.0))
+    col = _mezcla(col, pasto, _suave((H - 1.0) / 1.5))
+    return _mezcla(col, roca, np.maximum(_suave((H - 14.0) / 8.0), _suave((pend - 0.35) / 0.35)))
+
+
 def malla_terreno(H, cell_m=None, calles=None):
     """Malla del terreno: [G*G, 9] (posición, normal, color) e índices. `calles` (bool [G,G])
     pinta de asfalto las celdas de las calles."""
@@ -317,15 +317,7 @@ def malla_terreno(H, cell_m=None, calles=None):
     gz = np.gradient(H.astype(np.float64), cell_m, axis=0)
     n = np.stack([-gx, np.ones_like(gx), -gz], -1)
     n /= np.linalg.norm(n, axis=-1, keepdims=True)
-    pend = np.hypot(gx, gz)
-
-    fondo = np.array([0.30, 0.36, 0.40])
-    arena = np.array([0.86, 0.78, 0.58])
-    pasto = np.array([0.42, 0.55, 0.30])
-    roca = np.array([0.50, 0.46, 0.42])
-    col = _mezcla(fondo, arena, _suave((H + 1.0) / 1.0))
-    col = _mezcla(col, pasto, _suave((H - 1.0) / 1.5))
-    col = _mezcla(col, roca, np.maximum(_suave((H - 14.0) / 8.0), _suave((pend - 0.35) / 0.35)))
+    col = colores_terreno(H, np.hypot(gx, gz))
     if calles is not None:
         asfalto = np.array([0.33, 0.34, 0.36])
         col = _mezcla(col, asfalto, np.asarray(calles, np.float64) * 0.9)
