@@ -21,6 +21,7 @@ from hud.panel import PanelHUD
 from modulos.arrastre import Arrastre
 from modulos.base import Modulo
 from modulos.cresta import Cresta
+from modulos.horizonte import Horizonte
 from modulos.iluminacion import Iluminacion
 from modulos.materiales import Materiales
 from modulos.terreno import Terreno
@@ -88,6 +89,7 @@ def crear_modulos(vista3d=False, ola_falsa=False):
         Terreno(),          # rol 2
         Arrastre(),         # rol 3
         Materiales(),       # rol 4
+        Horizonte(),        # rol 2: terreno y mar siguen más allá del mapa
         Cresta(),           # rol 2 (después del agua: también es transparente)
         Iluminacion(),      # rol 5
         ModuloHUD(ola_falsa),   # rol 1 (siempre al final: se dibuja encima)
@@ -199,7 +201,7 @@ def main():
         if args.vista3d:
             zona = ctx.ancho_fb - ctx.ancho_fb * cfg.HUD_ANCHO // cfg.VENTANA_ANCHO
             gl.glViewport(0, 0, zona, ctx.alto_fb)
-            gl.glClearColor(0.55, 0.72, 0.90, 1.0)
+            gl.glClearColor(*cfg.COLOR_CIELO, 1.0)
         else:
             gl.glViewport(0, 0, ctx.ancho_fb, ctx.alto_fb)
             gl.glClearColor(0.08, 0.09, 0.12, 1.0)

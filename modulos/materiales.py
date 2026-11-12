@@ -41,8 +41,20 @@ NOMBRES_UNIFORMS = (
 NOMBRES_UNIFORMS_AGUA = (
     "uVP", "uSolDir", "uSolColor", "uCamPos", "uAlarma",
     "uUmbral", "uDMax", "uAlfaMin", "uAlfaMax",
-    "uTiempo", "uDetalle", "uAnchoEspuma",
+    "uTiempo", "uDetalle", "uAnchoEspuma", "uCielo",
 )
+
+# Reflejo del cielo en el agua (aproximación de Fresnel): mirando hacia abajo se ve sobre todo el
+# color del agua; mirando de costado, el agua refleja el cielo. Sin esto el agua profunda se ve
+# casi negra. El horizonte del rol 2 usa la misma función para que no quede costura.
+REFLEJO_BASE = 0.25       # cuánto cielo se refleja mirando hacia abajo
+REFLEJO_RASANTE = 0.6     # cuánto más se suma al mirar de costado
+REFLEJO_CIELO_GLSL = f"""
+vec3 reflejo_cielo(vec3 color, vec3 N, vec3 V, vec3 cielo) {{
+    float f = {REFLEJO_BASE} + {REFLEJO_RASANTE} * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    return mix(color, cielo, f);
+}}
+"""
 
 VERT_TERRENO = """#version 330 core
 layout(location = 0) in vec3 aPos;
@@ -155,7 +167,7 @@ void main() {
 }
 """
 
-FRAG_AGUA = """
+FRAG_AGUA = REFLEJO_CIELO_GLSL + """
 in vec3 vPos;
 in float vProf;
 
@@ -170,6 +182,7 @@ uniform float uAlfaMax;
 uniform float uTiempo;
 uniform sampler2D uDetalle;
 uniform float uAnchoEspuma;
+uniform vec3 uCielo;
 
 out vec4 fragColor;
 
@@ -186,6 +199,7 @@ void main() {
     vec3 col = phong_mojado(N, V, L, base, uSolColor,
                             0.45, 0.55, 0.90, 64.0,
                             1.0, 1.0);
+    col = reflejo_cielo(col, N, V, uCielo);
     col = tinte_alarma(col, uAlarma);
 
     // Opacidad: más profunda = más opaca. En el borde del agua se desvanece.
@@ -501,6 +515,7 @@ class Materiales(Modulo):
         gl.glUniform1f(u["uAlfaMax"], ALFA_MAX)
         gl.glUniform1f(u["uTiempo"], float(campos.t))
         gl.glUniform1f(u["uAnchoEspuma"], float(ESPUMA_ANCHO_M))
+        gl.glUniform3f(u["uCielo"], *[float(c) for c in cfg.COLOR_CIELO])
 
         # El ruido de la espuma es la misma textura de detalle (unidad 2).
         gl.glActiveTexture(gl.GL_TEXTURE2)

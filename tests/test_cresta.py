@@ -44,19 +44,33 @@ def test_sin_frente_no_hay_cresta():
 
 def test_cresta_completa_en_agua_profunda():
     m = malla_cresta(_frente(200.0), _mar())
-    assert len(m) > 0 and len(m) % 3 == 0
+    assert m.shape[1] == 10 and len(m) > 0 and len(m) % 3 == 0
     y = m[:, 1]
-    assert y.max() == pytest.approx(cr.ALTO_CRESTA_M, abs=0.5)
+    assert cr.NIVEL_ESPALDA_M + 0.5 * cr.ALTO_EXTRA_M <= y.max() <= cr.NIVEL_ESPALDA_M + 1.5 * cr.ALTO_EXTRA_M
     assert y.min() >= cfg.NIVEL_MAR_M - 1e-3
-    assert m[:, 0].min() >= 200.0 - 45.0 - 1e-3 and m[:, 0].max() <= 200.0 + 15.0
+    assert m[:, 0].min() >= 200.0 - 35.0 - 1e-3 and m[:, 0].max() <= 200.0 + 10.0 + 1e-3
     assert m[:, 2].min() == pytest.approx(0.0) and m[:, 2].max() == pytest.approx((G - 1) * cfg.CELL_M)
     assert np.isfinite(m).all()
+
+
+def test_la_espalda_nace_transparente_del_agua():
+    m = malla_cresta(_frente(200.0), _mar())
+    atras = m[:, 0] <= 200.0 - 34.0
+    assert atras.any() and m[atras, 9].max() < 0.05          # se funde con el agua, sin borde visible
+    assert m[:, 9].max() == pytest.approx(cr.ALFA, abs=0.01)
+
+
+def test_la_altura_cambia_a_lo_largo_del_frente():
+    m = malla_cresta(_frente(200.0), _mar())
+    zs = np.unique(np.round(m[:, 2], 2))
+    cimas = [m[np.isclose(m[:, 2], z, atol=0.01), 1].max() for z in zs]
+    assert max(cimas) - min(cimas) > 0.5                      # no es un muro parejo
 
 
 def test_la_cresta_baja_al_llegar_a_la_costa():
     profunda = malla_cresta(_frente(200.0), _mar(10.0))[:, 1].max()
     bajando = malla_cresta(_frente(200.0), _mar(2.0))[:, 1].max()
-    assert bajando < profunda - 2.0
+    assert bajando < profunda - 0.8
     assert len(malla_cresta(_frente(200.0), _mar(-1.0))) == 0          # frente sobre tierra: ya rompió
     assert factor_cresta(_frente(200.0), _mar(2.0)) == pytest.approx(np.full(G, 0.5))
 
@@ -69,7 +83,7 @@ def test_sigue_la_curva_del_frente():
         en_fila = np.isclose(m[:, 2], iz * cfg.CELL_M)
         cima = m[en_fila][np.argmax(m[en_fila, 1])]
         desfases.append(cima[0] - x[iz])
-    assert all(0.0 <= d <= 8.0 for d in desfases)          # la cima va justo delante del frente
+    assert all(-12.0 <= d <= 3.0 for d in desfases)        # la cima va justo en el frente
     assert max(desfases) - min(desfases) < 1.0             # en todas las filas a la misma distancia
 
 

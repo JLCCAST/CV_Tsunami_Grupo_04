@@ -77,7 +77,11 @@ sirven para dibujar o para ubicar objetos. No cambian durante la simulación:
 | `mascara_calles` | `bool [G,G]` | celdas cubiertas por una calle. Ninguna casa cae encima |
 | `muelles` | lista de dicts `x0, x1, z, ancho, y` (m) | tres muelles en el centro de la bahía; `x0` es la punta sobre el mar. Rol 3: barcos |
 
-La costa es una bahía (curva de Bézier) con cerros en las dos puntas. Los techos a dos aguas de
+`modulos/horizonte.py` extiende el terreno y el mar unos 3 km fuera del mapa: las franjas nacen
+en el borde con el mismo alto y color, el agua que levanta la ola baja suave al nivel del mar y a
+lo lejos todo se funde con `COLOR_CIELO` (en `config.py`). Solo dibuja; no cambia ningún campo.
+
+La costa es una bahía suave (curva de Bézier) y los cerros quedan al fondo. Los techos a dos aguas de
 las casas son B-rep (`modulos/brep.py`) y cumplen la fórmula de Euler.
 
 La cresta de la ola (`modulos/cresta.py`) es decorado del rol 2: lee `frente_x` y `H`, arma

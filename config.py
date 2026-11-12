@@ -17,7 +17,8 @@ SIN_FRENTE = -1.0         # valor de frente_x en las filas donde no hay una ola 
 
 VENTANA_ANCHO = 1280
 VENTANA_ALTO = 720
-HUD_ANCHO = 320           # panel lateral derecho, en píxeles de la ventana de 1280
+COLOR_CIELO = (0.55, 0.72, 0.90)   # fondo de la vista 3D; el horizonte se funde con este color
+HUD_ANCHO = 320          # panel lateral derecho, en píxeles de la ventana de 1280
 HUD_HZ = 10               # el lienzo del HUD se redibuja como máximo a 10 Hz
 FPS_OBJETIVO = 20         # referencia para el control de la semana
 
